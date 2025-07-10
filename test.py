@@ -36,10 +36,7 @@ OPENAI_MODEL = "gpt-4o-mini"      # cheap; swap to gpt-4o for stronger play
 GEMINI_MODEL = "gemini-1.5-flash"
 
 GEMINI_KEY = ""
-OPENAI_KEY = ""
-  # “flash” for speed; use "pro" for strength
 
-STARTING_STACK = 10_000
 BLINDS = (50, 100)  # SB, BB
 MIN_BET = BLINDS[1]
 
@@ -156,10 +153,10 @@ class PromptAdapter:
             else:
                 tok = f"call:{st.checking_or_calling_amount}"
             tokens.append(tok)
-    
+
         min_raise = st.min_completion_betting_or_raising_to_amount
         tokens.append(f"raise_to: {min_raise} to {st.stacks[st.actor_index]}")
-    
+
         return tokens
 
     @staticmethod
@@ -192,7 +189,11 @@ class Orchestrator:
     # Build a fresh Poker‑Kit state
     def _make_state(self, stacks=None):
         # Use provided stacks or default
-        stacks = stacks if stacks is not None else (15000, 12000)
+        stacks = stacks if stacks is not None else (400, 400)
+        for i in stacks:
+            if i <= 0:
+                #TODO: handle someone busting
+                raise ValueError(f"Invalid stack size: {i}. Must be non-negative.")
         return NoLimitTexasHoldem.create_state(
             (
                 Automation.ANTE_POSTING,
@@ -210,7 +211,7 @@ class Orchestrator:
                 False,       # 2. ante_trimming_status
                 {0: 0},   # 3. raw_antes
                 (1, 2),  # 4. raw_blinds_or_straddles
-                400,         # 5. bring_in
+                2,         # 5. min_bet
                 stacks,      # 6. raw_starting_stacks
                 2,           # 7. player_count
                 mode=Mode.CASH_GAME,  # 8. mode (keyword-only)
