@@ -23,10 +23,18 @@ import random
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+env_path = Path(os.path.dirname(os.path.abspath(__file__))) / '.env'
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
 
 import openai  # type: ignore
 from google import genai # type: ignore  # ← new pkg name replaces deprecated `google.generativeai`
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
+from pokerkit.state import HoleCardsShowingOrMucking
 
 ############################################################
 # ───────────────────  CONFIG  ─────────────────────────────
@@ -35,7 +43,9 @@ from pokerkit import Automation, Mode, NoLimitTexasHoldem
 OPENAI_MODEL = "gpt-4o-mini"      # cheap; swap to gpt-4o for stronger play
 GEMINI_MODEL = "gemini-1.5-flash"
 
-GEMINI_KEY = ""
+# Load API keys from environment variables
+GEMINI_KEY = os.getenv("GEMINI_KEY", "")
+OPENAI_KEY = os.getenv("OPENAI_KEY", "")
 
 BLINDS = (50, 100)  # SB, BB
 MIN_BET = BLINDS[1]
@@ -235,6 +245,10 @@ class Orchestrator:
             rank, suit = card_str[:-1], card_str[-1]
         return f"{rank_map.get(rank, rank)}{suit_map.get(suit, suit)}"
 
+    def hole_cards_to_emoji(self, cards):
+        """Convert a list of card strings to emoji representation."""
+        return ' '.join([self.card_to_emoji(card) for card in cards])
+
     def board_to_emoji(self, board):
         return [self.card_to_emoji(card) for card in board]
 
@@ -285,11 +299,16 @@ class Orchestrator:
                 # 1. New board cards
                 board = [str(card) for card in st.get_board_cards(0)]
                 if board != last_board:
-                    print(f"Board: {self.board_to_emoji(board)}")
+                    print(f"Board: {' '.join(self.board_to_emoji(board))}")
                     last_board = board.copy()
                 # 2. New actions
                 if len(st.operations) > last_history_len:
                     for op in st.operations[last_history_len:]:
+                        # Display hole cards with emojis when they're shown
+                        if isinstance(op, HoleCardsShowingOrMucking) and op.hole_cards:
+                            cards_str = [str(card) for card in op.hole_cards]
+                            emoji_cards = self.hole_cards_to_emoji(cards_str)
+                            print(f"Player {op.player_index} shows: {emoji_cards}")
                         print(f"Action: {op}")
                     last_history_len = len(st.operations)
                 # 3. Stack changes
@@ -318,6 +337,6 @@ class Orchestrator:
 #######################################################################
 
 if __name__ == "__main__":
-    hands_to_play = int(os.getenv("NUM_HANDS", "2"))
+    hands_to_play = int(os.getenv("NUM_HANDS", "1"))
     orch = Orchestrator(hands=hands_to_play)
     asyncio.run(orch.run())
