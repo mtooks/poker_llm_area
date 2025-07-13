@@ -4,14 +4,14 @@ Gemini) using **Poker‑Kit** as the authoritative rules engine.
 
 Key components
 ==============
-* **LLMThread** – isolated chat session wrapper (OpenAI or Gemini).
+* **Player** – encapsulates LLM session, stack tracking, and decision making.
 * **PromptAdapter** – converts Poker‑Kit `State` → player‑specific JSON prompt
   and validates the returned token.
 * **Orchestrator** – runs one table for _n_ hands.  Deterministic if you freeze
   RNG, model versions and config.
 
 The script is deliberately minimal: no fancy logging, retry policy, cost
-tracking or multi‑table scheduler. Those are left for you to flesh out once the
+tracking or multi‑table scheduler. Those are left for you to flesh out once the
 core loop behaves.
 """
 from __future__ import annotations
@@ -24,17 +24,12 @@ import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Sequence
 from pathlib import Path
-from dotenv import load_dotenv
 
-# Load environment variables from .env file if it exists
-env_path = Path(os.path.dirname(os.path.abspath(__file__))) / '.env'
-if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
-
-import openai  # type: ignore
-from google import genai # type: ignore  # ← new pkg name replaces deprecated `google.generativeai`
+# Remove dotenv loading since Player handles API keys internally
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
 from pokerkit.state import HoleCardsShowingOrMucking
+
+from player import Player  # Import the new Player class
 
 ############################################################
 # ───────────────────  CONFIG  ─────────────────────────────
@@ -57,51 +52,6 @@ RAISE_SIZES = (
 
 RNG_SEED = 42
 LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call:\d+|raise_to:\s*\d+)$")
-############################################################
-# ───────────────  LLM THREAD WRAPPER  ─────────────────────
-############################################################
-
-@dataclass
-class LLMThread:
-    """Isolated chat thread for one player."""
-
-    name: str                 # "P0" / "P1"
-    provider: str             # "openai" | "gemini"
-    model: str
-
-    async def _chat_openai(self, messages: Sequence[Dict[str, str]]) -> str:
-        client = openai.AsyncOpenAI(api_key=OPENAI_KEY)  # relies on $OPENAI_API_KEY
-        rsp = await client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=400,
-        )
-        # print(rsp)
-        return rsp.choices[0].message.content.strip()
-
-    async def _chat_gemini(self, messages: Sequence[Dict[str, str]]) -> str:
-        """Send the prompt to Gemini via the *google‑genai* client.
-
-        The library does not yet support full role‑based chat; we pack our JSON
-        into a single user message and rely on the system prompt to condition
-        behaviour.  Gemini 1.5 handles short prompts well.
-        """
-        genai.configure(api_key=GEMINI_KEY)
-        model = genai.GenerativeModel(self.model)
-        user_content = messages[-1]["content"]  # single user JSON string
-        sys_prompt = messages[0]["content"]
-        # Gemini expects the system prompt as a prefix in the text content.
-        full_prompt = f"<system>\n{sys_prompt}\n</system>\n<user>\n{user_content}\n</user>"
-        resp = model.generate_content(full_prompt)
-        return resp.text.strip()
-
-    async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
-        if self.provider == "openai":
-            return await self._chat_openai(messages)
-        if self.provider == "gemini":
-            return await self._chat_gemini(messages)
-        raise ValueError(self.provider)
 
 ############################################################
 # ───────────────  PROMPT ADAPTER  ─────────────────────────
@@ -190,16 +140,15 @@ class Orchestrator:
     def __init__(self, hands: int = 1):
         self.hands = hands
         self.rng = random.Random(RNG_SEED)
+        # Replace LLMThread with Player instances
         self.players = [
-            LLMThread("P0", "openai", OPENAI_MODEL),
-            LLMThread("P1", "openai", OPENAI_MODEL),
+            Player("P0", "openai", OPENAI_MODEL, initial_stack=400),
+            Player("P1", "openai", OPENAI_MODEL, initial_stack=400),
         ]
-        self.stacks = (400, 400)  # Initial stacks
 
     # Build a fresh Poker‑Kit state
-    def _make_state(self, stacks=None):
-        # Use provided stacks or default
-        stacks = stacks if stacks is not None else (400, 400)
+    def _make_state(self):
+        stacks = (self.players[0].stack, self.players[1].stack)
         for i in stacks:
             if i <= 0:
                 #TODO: handle someone busting
@@ -229,88 +178,89 @@ class Orchestrator:
 
     def card_to_emoji(self, card_str):
         """Convert a card string like 'AS' or 'Td' to an emoji."""
-        rank_map = {
-            'A': 'A', 'K': 'K', 'Q': 'Q', 'J': 'J',
-            'T': '10', '9': '9', '8': '8', '7': '7', '6': '6',
-            '5': '5', '4': '4', '3': '3', '2': '2'
-        }
+
         suit_map = {
-            's': '♠️', 'h': '♥️', 'd': '♦️', 'c': '♣️',
             'S': '♠️', 'H': '♥️', 'D': '♦️', 'C': '♣️'
         }
-        # Card string is like 'As', 'Td', etc.
-        if len(card_str) == 2:
-            rank, suit = card_str[0], card_str[1]
-        else:
+        # Card string comes in like 'EIGHT OF CLUBS (8c)'
+        if '(' in card_str and ')' in card_str:
+            # Extract the shorthand notation from inside parentheses
+            card_str = card_str.split('(')[1].split(')')[0]
             rank, suit = card_str[:-1], card_str[-1]
-        return f"{rank_map.get(rank, rank)}{suit_map.get(suit, suit)}"
+        elif len(card_str) == 2: 
 
-    def hole_cards_to_emoji(self, cards):
-        """Convert a list of card strings to emoji representation."""
-        return ' '.join([self.card_to_emoji(card) for card in cards])
-
-    def board_to_emoji(self, board):
-        return [self.card_to_emoji(card) for card in board]
+   
 
     async def _play_hand(self, hand_no: int):
-        st = self._make_state(self.stacks)
+        st = self._make_state()
         last_board = []
         last_stacks = list(st.stacks)
         last_history_len = 0
         print(f"\n=== Hand {hand_no} ===")
+        
+        # Track hand data to provide to players after completion
+        hand_data = {
+            "hand_id": hand_no,
+            "starting_stacks": last_stacks.copy(),
+            "actions": [],
+            "final_board": [],
+            "result": {}
+        }
+        
         # Betting loop ------------------------------------------------------
-        # while not st.can_push_chips():
         while st.status:
-            plr = st.actor_index
+            plr_idx = st.actor_index
             legal = PromptAdapter.legal_tokens(st)
-            prompt_json = json.dumps(
-                {
-                    "state": PromptAdapter.visible_state(st, plr),
-                    "legal": legal,
-                },
-                separators=(',', ':'),
-            )
-            messages = [
-                {
-                    "role": "system",
-                    "content": (
-                        """You are an autonomous No limit TEXAS HOLDEM poker agent, evaluating the current game state and making the 
-                        decision to fold, check, call, or raise that maximizes your expected value.
-                        Return EXACTLY one token from the user's 'legal' list. If you want to
-                        raise, use the format 'raise_to:<amount>'. Amount is a singular integers that has to be within the range provided.
-                        The range of valid bet sizes is provided to you. A response like 'raise_to:6900 to 500' is not allowed. 
-                        You are also provided with your hole cards, the current street, and the past board history.\n"
-                        Justify your decision  but separate it from the token with the '@' symbol"""
-                    ),
-                },
-                {"role": "user", "content": prompt_json},
-            ]
-            rsp = await self.players[plr].ask(messages)
-            rsp, commentary = rsp.split('@')[0], rsp.split('@')[1]
-            print(commentary)
-            # TODO: validate rsp (raise to) against legal tokens
-            # if not LEGAL_TOKEN_RE.match(rsp) or rsp not in legal:
+            game_state = PromptAdapter.visible_state(st, plr_idx)
+            
+            # Use the player's make_decision method
+            rsp = await self.players[plr_idx].make_decision(game_state, legal)
+            
+            # Track action in hand history
+            try:
+                rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
+                print(commentary)
+                hand_data["actions"].append({
+                    "player": plr_idx,
+                    "action": rsp,
+                    "commentary": commentary
+                })
+            except ValueError:
+                # Handle case where response doesn't contain the @ symbol
+                rsp = rsp.strip()
+                hand_data["actions"].append({
+                    "player": plr_idx,
+                    "action": rsp,
+                    "commentary": "No commentary provided"
+                })
+                
+            # Validate and apply token
             if not LEGAL_TOKEN_RE.match(rsp):
                 print(f'Bad Move: {rsp}') # auto‑punish illegal output
                 rsp = "fold" 
+                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action
+                
             try:
                 PromptAdapter.apply_token(st, rsp)
                 # Print only new developments:
                 # 1. New board cards
                 board = [str(card) for card in st.get_board_cards(0)]
                 if board != last_board:
-                    print(f"Board: {' '.join(self.board_to_emoji(board))}")
+                    print(f"Board: {[self.card_to_emoji(card) for card in board]}")
                     last_board = board.copy()
+                    hand_data["final_board"] = board.copy()
+                    
                 # 2. New actions
                 if len(st.operations) > last_history_len:
                     for op in st.operations[last_history_len:]:
                         # Display hole cards with emojis when they're shown
                         if isinstance(op, HoleCardsShowingOrMucking) and op.hole_cards:
                             cards_str = [str(card) for card in op.hole_cards]
-                            emoji_cards = self.hole_cards_to_emoji(cards_str)
+                            emoji_cards = [self.card_to_emoji(card) for card in cards_str]
                             print(f"Player {op.player_index} shows: {emoji_cards}")
                         print(f"Action: {op}")
                     last_history_len = len(st.operations)
+                    
                 # 3. Stack changes
                 if list(st.stacks) != last_stacks:
                     print(f"Stacks: P0={st.stacks[0]}, P1={st.stacks[1]}")
@@ -318,25 +268,48 @@ class Orchestrator:
             except Exception:
                 st.fold()
                 print("Forced fold due to error.")
+                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action
 
         # Showdown & settle pots -------------------------------------------
-        # st.push_chips()
         print(
             f"Hand {hand_no} result → stacks: P0={st.stacks[0]} | P1={st.stacks[1]}",
             flush=True,
         )
-        # Save stacks for next hand
-        self.stacks = tuple(st.stacks)
+        
+        # Update hand result data
+        hand_data["result"] = {
+            "final_stacks": list(st.stacks),
+            "profit_p0": st.stacks[0] - hand_data["starting_stacks"][0],
+            "profit_p1": st.stacks[1] - hand_data["starting_stacks"][1],
+        }
+        
+        # Update player stacks and memory
+        for idx, player in enumerate(self.players):
+            player.update_stack(st.stacks[idx])
+            player.update_memory(hand_data)
 
     async def run(self):
         for h in range(1, self.hands + 1):
             await self._play_hand(h)
+        
+        # Print overall performance
+        print("\n=== Overall Performance ===")
+        for idx, player in enumerate(self.players):
+            wins = sum(1 for hand in player.hand_history if hand["result"][f"profit_p{idx}"] > 0)
+            profit = sum(hand["result"][f"profit_p{idx}"] for hand in player.hand_history)
+            print(f"Player {player.name}: {wins}/{self.hands} hands won, Total profit: {profit}")
 
 #######################################################################
 # ─────────────────────  CLI ENTRY POINT  ─────────────────────────────
 #######################################################################
 
 if __name__ == "__main__":
-    hands_to_play = int(os.getenv("NUM_HANDS", "1"))
+    hands_to_play = int(os.getenv("NUM_HANDS", "3"))
     orch = Orchestrator(hands=hands_to_play)
     asyncio.run(orch.run())
+    # self.stacks = tuple(st.stacks)
+
+    async def run(self):
+        for h in range(1, self.hands + 1):
+            await self._play_hand(h)
+
