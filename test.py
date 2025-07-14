@@ -37,6 +37,7 @@ from player import Player  # Import the new Player class
 
 OPENAI_MODEL = "gpt-4o-mini"      # cheap; swap to gpt-4o for stronger play
 GEMINI_MODEL = "gemini-1.5-flash"
+ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
 
 # Load API keys from environment variables
 GEMINI_KEY = os.getenv("GEMINI_KEY", "")
@@ -51,7 +52,7 @@ RAISE_SIZES = (
 )  # pot‑ish raise slot
 
 RNG_SEED = 42
-LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call:\d+|raise_to:\s*\d+)$")
+LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+)$")
 
 ############################################################
 # ───────────────  PROMPT ADAPTER  ─────────────────────────
@@ -73,14 +74,9 @@ class PromptAdapter:
                 return f"{cls}(player={op.player_index}, amount={getattr(op, 'amount', None)})"
             else:
                 return None
-        if st.street_index == 0:
-            street_name = "Pre flop"
-        elif st.street_index == 1:
-            street_name = "Flop"
-        elif st.street_index == 2:
-            street_name = "Turn"
-        elif st.street_index == 3:
-            street_name = "River"
+
+        street_map = {0: "Pre flop", 1: "Flop", 2: "Turn", 3: "River"}
+        street_name = street_map.get(st.street_index, "Unknown")
 
         if st.can_complete_bet_or_raise_to(st.min_completion_betting_or_raising_to_amount):
             min_raise = st.min_completion_betting_or_raising_to_amount
@@ -92,11 +88,10 @@ class PromptAdapter:
             # "button": st.button_index,  # Only include if you track button_index elsewhere
         # "actor": player,
         "board": card_str_list(st.get_board_cards(0)),
-        "hole": card_str_list(st.hole_cards[player]),
-        "your stack": st.stacks[player],
-        "opponent stack": st.stacks[1 - player],
-        # "stacks": list(st.stacks),
-        "pot": st.total_pot_amount,
+        "Hole Cards": card_str_list(st.hole_cards[player]),
+        "Your stack": st.stacks[player],
+        "Opponent stack": st.stacks[1 - player],
+        "Pot size": st.total_pot_amount,
         "to_call": st.checking_or_calling_amount if st.can_check_or_call() else 0,
         "min_raise_to": (min_raise),
         "history": [action_str(op) for op in st.operations if action_str(op)  is not None]
@@ -111,7 +106,7 @@ class PromptAdapter:
             if st.checking_or_calling_amount == 0:
                 tok = "check"
             else:
-                tok = f"call:{st.checking_or_calling_amount}"
+                tok = f"call"
             tokens.append(tok)
 
         min_raise = st.min_completion_betting_or_raising_to_amount
@@ -142,8 +137,8 @@ class Orchestrator:
         self.rng = random.Random(RNG_SEED)
         # Replace LLMThread with Player instances
         self.players = [
-            Player("P0", "openai", OPENAI_MODEL, initial_stack=400),
-            Player("P1", "openai", OPENAI_MODEL, initial_stack=400),
+            Player("Mr. Chatgpt", "openai", OPENAI_MODEL, initial_stack=400),
+            Player("Mr. Claude", "anthropic", ANTHROPIC_MODEL, initial_stack=400),
         ]
 
     # Build a fresh Poker‑Kit state
@@ -187,7 +182,8 @@ class Orchestrator:
             # Extract the shorthand notation from inside parentheses
             card_str = card_str.split('(')[1].split(')')[0]
             rank, suit = card_str[:-1], card_str[-1]
-        elif len(card_str) == 2: 
+            suit = suit.upper()  # Ensure suit is uppercase
+            return f"{rank}{suit_map[suit]}"
 
    
 
@@ -231,10 +227,10 @@ class Orchestrator:
                 hand_data["actions"].append({
                     "player": plr_idx,
                     "action": rsp,
-                    "commentary": "No commentary provided"
+                    "commentary": ""
                 })
                 
-            # Validate and apply token
+            # Validate. TODO: eliminate regex and actually use the values in legal
             if not LEGAL_TOKEN_RE.match(rsp):
                 print(f'Bad Move: {rsp}') # auto‑punish illegal output
                 rsp = "fold" 
@@ -304,7 +300,7 @@ class Orchestrator:
 #######################################################################
 
 if __name__ == "__main__":
-    hands_to_play = int(os.getenv("NUM_HANDS", "3"))
+    hands_to_play = int(os.getenv("NUM_HANDS", "10"))
     orch = Orchestrator(hands=hands_to_play)
     asyncio.run(orch.run())
     # self.stacks = tuple(st.stacks)

@@ -26,14 +26,9 @@ class Player:
         self.hand_history = []
         self.conversation_history = []
         self.system_prompt = system_prompt or (
-            """You are an autonomous No limit TEXAS HOLDEM poker agent, evaluating the current game state and making the 
-            decision to fold, check, call, or raise that maximizes your expected value.
-            Return EXACTLY one token from the user's 'legal' list. If you want to
-            raise, use the format 'raise_to:<amount>'. Amount is a singular integer that has to be within the range provided.
-            The range of valid bet sizes is provided to you. A response like 'raise_to:6900 to 500' is not allowed. 
-            You are also provided with your hole cards, the current street, and the past board history.\n"
-            Justify your decision but separate it from the token with the '@' symbol"""
-        )
+            """You are the most aggresive talented and skilled professional No limit Texas Holdem poker player, evaluating the current game state and making the decision to fold, check, call, or raise to win as much money as possible.         
+            Response format:Output must be: <action>[optional integer]@<brief reason>. No other characters, no markdown. If you're raising, the optional integer range will be provided to you in the legal tokens. Explain your thinking but separate it from the token with a preceding '@' symbol
+            """)
         
         # Initialize LLM clients once during object creation
         import os
@@ -56,6 +51,20 @@ class Player:
                 raise ValueError("GEMINI_KEY environment variable is not set")
             genai.configure(api_key=gemini_key)
             self.client = genai.GenerativeModel(self.model)
+        elif self.provider == "anthropic":
+            # Import Anthropic library - handle this at initialization time
+            # to avoid requiring it for users who don't use Anthropic
+            try:
+                import anthropic
+            except ImportError:
+                raise ImportError("Anthropic provider requires the 'anthropic' package. Install with 'pip install anthropic'")
+            
+            anthropic_key = os.getenv("ANTHROPIC_KEY", "")
+            if not anthropic_key:
+                raise ValueError("ANTHROPIC_KEY environment variable is not set")
+            self.client = anthropic.AsyncAnthropic(api_key=anthropic_key)
+        else:
+            raise ValueError(f"Unsupported provider: {self.provider}")
 
     async def _chat_openai(self, messages: Sequence[Dict[str, str]]) -> str:
         """Send messages to OpenAI API and get response using persistent client."""
@@ -83,6 +92,36 @@ class Player:
         resp = self.client.generate_content(full_history)
         return resp.text.strip()
 
+    async def _chat_anthropic(self, messages: Sequence[Dict[str, str]]) -> str:
+        """Send messages to Anthropic API and get response."""
+        # Convert from OpenAI-style messages to Anthropic format
+        system_content = ""
+        conversation = []
+        
+        # Extract system message
+        for msg in messages:
+            if msg["role"] == "system":
+                system_content = msg["content"]
+                break
+        
+        # Build the conversation messages
+        for msg in messages:
+            if msg["role"] == "user":
+                conversation.append({"role": "user", "content": msg["content"]})
+            elif msg["role"] == "assistant":
+                conversation.append({"role": "assistant", "content": msg["content"]})
+        
+        # Create the message request
+        response = await self.client.messages.create(
+            model=self.model,
+            system=system_content,
+            # temperature = 
+            messages=conversation,
+            max_tokens=1000
+        )
+        
+        return response.content[0].text
+
     async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
         """Route request to appropriate LLM provider with conversation history."""
         # Combine system message, conversation history, and current message
@@ -98,6 +137,8 @@ class Player:
             response = await self._chat_openai(full_messages)
         elif self.provider == "gemini":
             response = await self._chat_gemini(full_messages)
+        elif self.provider == "anthropic":
+            response = await self._chat_anthropic(full_messages)
         else:
             raise ValueError(f"Unknown provider: {self.provider}")
         
