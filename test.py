@@ -357,65 +357,79 @@ class Orchestrator:
         pfr_counts = [0] * len(self.players)
         hand_counts = [0] * len(self.players)
         
-        for player in self.players:
-            for hand in player.hand_history:
-                dealer_pos = hand.get("dealer_position", 0)
-                
-                for action in hand["actions"]:
-                    player_idx = action["player"]
-                    action_type = action["action"]
-                    
-                    # Only count actions in preflop street
-                    is_preflop = True
-                    for prev_action in hand["actions"][:hand["actions"].index(action)]:
-                        # If we see board cards, we're past preflop
-                        if "Dealt cards=" in prev_action.get("action", ""):
-                            is_preflop = False
-                            break
-                    
-                    # Count hands played by each player
-                    if is_preflop and action_type not in ["fold", "check"]:
-                        # This player voluntarily put money in pot (call or raise)
-                        vpip_counts[player_idx] += 1
-                        # Only count each player once per hand
-                        break
-        
-        # Calculate PFR (players who raised preflop)
-        for player in self.players:
-            for hand in player.hand_history:
-                dealer_pos = hand.get("dealer_position", 0)
-                
-                for action in hand["actions"]:
-                    player_idx = action["player"]
-                    action_type = action["action"]
-                    
-                    # Only count actions in preflop street
-                    is_preflop = True
-                    for prev_action in hand["actions"][:hand["actions"].index(action)]:
-                        # If we see board cards, we're past preflop
-                        if "Dealt cards=" in prev_action.get("action", ""):
-                            is_preflop = False
-                            break
-                    
-                    # Count preflop raises
-                    if is_preflop and action_type.startswith("raise_to:"):
-                        pfr_counts[player_idx] += 1
-                        break
-        
         # Count total hands each player was dealt
         for player_idx, player in enumerate(self.players):
             hand_counts[player_idx] = len(player.hand_history)
         
+        # Reset and properly calculate VPIP and PFR by tracking each player correctly
+        for idx, player in enumerate(self.players):
+            # Each player gets one VPIP count per hand where they voluntarily put in money
+            vpip_per_hand = set()  # Track hands where this player voluntarily put in
+            pfr_per_hand = set()   # Track hands where this player raised preflop
+            
+            for hand in player.hand_history:
+                hand_id = hand["hand_id"]
+                dealer_pos = hand.get("dealer_position", 0)
+                
+                # Track preflop actions only
+                is_preflop_action = True
+                
+                for action in hand["actions"]:
+                    player_idx = action["player"]
+                    action_type = action["action"]
+                    
+                    # Skip actions by other players
+                    if player_idx != idx:
+                        continue
+                        
+                    # Check if we're still in preflop
+                    if not is_preflop_action:
+                        continue
+                        
+                    # Check if this is where flop is dealt (end of preflop)
+                    if "Dealt cards=" in action_type:
+                        is_preflop_action = False
+                        continue
+                    
+                    # Only count voluntary actions (not blinds/checks)
+                    if action_type not in ["fold", "check"]:
+                        vpip_per_hand.add(hand_id)
+                    
+                    # Count raises specifically
+                    if action_type.startswith("raise_to:"):
+                        pfr_per_hand.add(hand_id)
+                
+                # After processing actions, check if flop was dealt
+                for action in hand["actions"]:
+                    if "Dealt cards=" in action.get("action", ""):
+                        is_preflop_action = False
+                        break
+            
+            # Now count unique hands where player took these actions
+            vpip_counts[idx] = len(vpip_per_hand)
+            pfr_counts[idx] = len(pfr_per_hand)
+        
         # Print performance stats
         for idx, player in enumerate(self.players):
-            wins = sum(1 for hand in player.hand_history if hand["result"].get(f"profit_p{idx}", 0) > 0)
+            # Bug fix: The profit calculation was using the wrong key format
+            # We need to track which position the player was in for each hand
+            wins = 0
+            for hand in player.hand_history:
+                # Find which position (p0 or p1) this player was in for this hand
+                dealer_pos = hand.get("dealer_position", 0)
+                # In this hand, player was in position:
+                player_position = (idx - dealer_pos) % len(self.players)
+                # Now check if that position had positive profit
+                if hand["result"].get(f"profit_p{player_position}", 0) > 0:
+                    wins += 1
+            
             # Calculate profit as the difference between final stack and initial stack
             profit = player.stack - player.initial_stack
             total_profit += profit
             
-            # Calculate VPIP and PFR as percentages
-            vpip_pct = (vpip_counts[idx] / hand_counts[idx] * 100) if hand_counts[idx] > 0 else 0
-            pfr_pct = (pfr_counts[idx] / hand_counts[idx] * 100) if hand_counts[idx] > 0 else 0
+            # Calculate VPIP and PFR as percentages (ensuring they can't exceed 100%)
+            vpip_pct = min(100, (vpip_counts[idx] / hand_counts[idx] * 100)) if hand_counts[idx] > 0 else 0
+            pfr_pct = min(100, (pfr_counts[idx] / hand_counts[idx] * 100)) if hand_counts[idx] > 0 else 0
             
             print(f"Player {player.name}: {wins}/{self.hands} hands won, Total profit: {profit}")
             print(f"  VPIP: {vpip_pct:.1f}% (voluntarily put money in {vpip_counts[idx]}/{hand_counts[idx]} hands)")
