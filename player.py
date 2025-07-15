@@ -23,6 +23,7 @@ class Player:
         self.provider = provider
         self.model = model
         self.stack = initial_stack
+        self.initial_stack = initial_stack
         self.hand_history = []
         self.conversation_history = []
         self.system_prompt = system_prompt or (

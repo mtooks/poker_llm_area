@@ -1,14 +1,7 @@
 # poker_llm_orchestrator.py
-"""Skeleton driver for heads‑up NLHE matches between two LLMs (ChatGPT &
-Gemini) using **Poker‑Kit** as the authoritative rules engine.
+"""
+TODO: Fix the Order of logging and output display.
 
-Key components
-==============
-* **Player** – encapsulates LLM session, stack tracking, and decision making.
-* **PromptAdapter** – converts Poker‑Kit `State` → player‑specific JSON prompt
-  and validates the returned token.
-* **Orchestrator** – runs one table for _n_ hands.  Deterministic if you freeze
-  RNG, model versions and config.
 
 The script is deliberately minimal: no fancy logging, retry policy, cost
 tracking or multi‑table scheduler. Those are left for you to flesh out once the
@@ -27,7 +20,7 @@ from pathlib import Path
 
 # Remove dotenv loading since Player handles API keys internally
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
-from pokerkit.state import HoleCardsShowingOrMucking
+from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling
 
 from player import Player  # Import the new Player class
 
@@ -137,13 +130,16 @@ class Orchestrator:
         self.rng = random.Random(RNG_SEED)
         # Replace LLMThread with Player instances
         self.players = [
-            Player("Mr. Chatgpt", "openai", OPENAI_MODEL, initial_stack=400),
-            Player("Mr. Claude", "anthropic", ANTHROPIC_MODEL, initial_stack=400),
+            Player("Mr.Altman", "openai", OPENAI_MODEL, initial_stack=400),
+            Player("Mr.Claude", "anthropic", ANTHROPIC_MODEL, initial_stack=400),
         ]
+        # Add dealer position tracking (0 = first player is dealer)
+        self.dealer_position = 0
 
     # Build a fresh Poker‑Kit state
+        # Use the dealer position to determine order of play
     def _make_state(self):
-        stacks = (self.players[0].stack, self.players[1].stack)
+        stacks = tuple(player.stack for player in self.get_players_in_position_order())
         for i in stacks:
             if i <= 0:
                 #TODO: handle someone busting
@@ -170,13 +166,27 @@ class Orchestrator:
                 2,           # 7. player_count
                 mode=Mode.CASH_GAME,  # 8. mode (keyword-only)
         )
+    
+    def get_players_in_position_order(self):
+        """Return players in their current position order based on dealer position."""
+        # In heads-up play, dealer is SB and acts first preflop, second postflop
+        # So we rotate the players array based on dealer position
+        return [self.players[(i + self.dealer_position) % len(self.players)] 
+                for i in range(len(self.players))]
+    
+    def get_player_index_in_game_state(self, player_idx):
+        """Convert real player index to index in the current game state."""
+        # This converts the actual player index to their position in this hand
+        return (player_idx - self.dealer_position) % len(self.players)
 
     def card_to_emoji(self, card_str):
         """Convert a card string like 'AS' or 'Td' to an emoji."""
-
         suit_map = {
             'S': '♠️', 'H': '♥️', 'D': '♦️', 'C': '♣️'
         }
+
+        if not isinstance(card_str, str):
+            card_str = str(card_str)
         # Card string comes in like 'EIGHT OF CLUBS (8c)'
         if '(' in card_str and ')' in card_str:
             # Extract the shorthand notation from inside parentheses
@@ -194,30 +204,48 @@ class Orchestrator:
         last_history_len = 0
         print(f"\n=== Hand {hand_no} ===")
         
+        # Get players in position order for this hand
+        players_in_position = self.get_players_in_position_order()
+        print(f"Button: {players_in_position[0].name} (SB), BB: {players_in_position[1].name}")
+        
         # Track hand data to provide to players after completion
         hand_data = {
             "hand_id": hand_no,
             "starting_stacks": last_stacks.copy(),
             "actions": [],
             "final_board": [],
+            "dealer_position": self.dealer_position,
             "result": {}
         }
+       
+        # Display hole cards at the beginning of the hand
+        for i in st.player_indices:
+            # Map state player index to actual player index
+            actual_player_idx = (i + self.dealer_position) % len(self.players)
+            print(f"P{i}, aka {self.players[actual_player_idx].name} hole cards:", 
+                  [self.card_to_emoji(card) for card in list(st.hole_cards[i])])
         
         # Betting loop ------------------------------------------------------
         while st.status:
             plr_idx = st.actor_index
+            if plr_idx is None:
+                break
+                
+            # Map state player index to actual player index
+            actual_player_idx = (plr_idx + self.dealer_position) % len(self.players)
+            player_name = self.players[actual_player_idx].name
             legal = PromptAdapter.legal_tokens(st)
             game_state = PromptAdapter.visible_state(st, plr_idx)
             
             # Use the player's make_decision method
-            rsp = await self.players[plr_idx].make_decision(game_state, legal)
+            rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
             
             # Track action in hand history
             try:
                 rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
-                print(commentary)
+                print(player_name +": "+ commentary)
                 hand_data["actions"].append({
-                    "player": plr_idx,
+                    "player": actual_player_idx,
                     "action": rsp,
                     "commentary": commentary
                 })
@@ -225,18 +253,17 @@ class Orchestrator:
                 # Handle case where response doesn't contain the @ symbol
                 rsp = rsp.strip()
                 hand_data["actions"].append({
-                    "player": plr_idx,
+                    "player": actual_player_idx,
                     "action": rsp,
                     "commentary": ""
                 })
                 
             # Validate. TODO: eliminate regex and actually use the values in legal
             if not LEGAL_TOKEN_RE.match(rsp):
-                print(f'Bad Move: {rsp}') # auto‑punish illegal output
+                print(f'!!!!!!!!!!!!!!ILLEGAL MOVE!!!!!!!: {rsp}') # auto‑punish illegal output
                 rsp = "fold" 
-                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action
-                
-            try:
+                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action               
+            try:               
                 PromptAdapter.apply_token(st, rsp)
                 # Print only new developments:
                 # 1. New board cards
@@ -248,27 +275,37 @@ class Orchestrator:
                     
                 # 2. New actions
                 if len(st.operations) > last_history_len:
+                    # Define operations to filter out in a tuple
+                    filtered_ops = (BetCollection, CardBurning, HoleDealing, ChipsPulling, BlindOrStraddlePosting)                    
                     for op in st.operations[last_history_len:]:
                         # Display hole cards with emojis when they're shown
                         if isinstance(op, HoleCardsShowingOrMucking) and op.hole_cards:
                             cards_str = [str(card) for card in op.hole_cards]
                             emoji_cards = [self.card_to_emoji(card) for card in cards_str]
-                            print(f"Player {op.player_index} shows: {emoji_cards}")
-                        print(f"Action: {op}")
-                    last_history_len = len(st.operations)
+                            actual_player = (op.player_index + self.dealer_position) % len(self.players)
+                            print(f"Player {self.players[actual_player].name} shows: {emoji_cards}")
+                        # Filter out specific operation types when printing
+                        if not isinstance(op, filtered_ops):
+                            print(f"Action: {op}")
+                last_history_len = len(st.operations)
                     
                 # 3. Stack changes
                 if list(st.stacks) != last_stacks:
-                    print(f"Stacks: P0={st.stacks[0]}, P1={st.stacks[1]}")
+                    # Map positions back to player names for clarity
+                    players_in_position = self.get_players_in_position_order()
+                    print(f"Stacks: {players_in_position[0].name}={st.stacks[0]}, {players_in_position[1].name}={st.stacks[1]}")
                     last_stacks = list(st.stacks)
-            except Exception:
+
+            except Exception as e:
+                print(f"Error occurred while processing hand {hand_no}: {e}")
                 st.fold()
-                print("Forced fold due to error.")
-                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action
+                
 
         # Showdown & settle pots -------------------------------------------
+        # Map positions back to player names for the final result
+        players_in_position = self.get_players_in_position_order()
         print(
-            f"Hand {hand_no} result → stacks: P0={st.stacks[0]} | P1={st.stacks[1]}",
+            f"Hand {hand_no} result → stacks: {players_in_position[0].name}={st.stacks[0]} | {players_in_position[1].name}={st.stacks[1]}",
             flush=True,
         )
         
@@ -280,9 +317,12 @@ class Orchestrator:
         }
         
         # Update player stacks and memory
-        for idx, player in enumerate(self.players):
+        for idx, player in enumerate(players_in_position):
             player.update_stack(st.stacks[idx])
             player.update_memory(hand_data)
+            
+        # Rotate dealer position for next hand
+        self.dealer_position = (self.dealer_position + 1) % len(self.players)
 
     async def run(self):
         for h in range(1, self.hands + 1):
@@ -290,22 +330,87 @@ class Orchestrator:
         
         # Print overall performance
         print("\n=== Overall Performance ===")
+        total_profit = 0  # To verify zero-sum property
+        
+        # Calculate VPIP and PFR stats
+        vpip_counts = [0] * len(self.players)
+        pfr_counts = [0] * len(self.players)
+        hand_counts = [0] * len(self.players)
+        
+        for player in self.players:
+            for hand in player.hand_history:
+                dealer_pos = hand.get("dealer_position", 0)
+                
+                for action in hand["actions"]:
+                    player_idx = action["player"]
+                    action_type = action["action"]
+                    
+                    # Only count actions in preflop street
+                    is_preflop = True
+                    for prev_action in hand["actions"][:hand["actions"].index(action)]:
+                        # If we see board cards, we're past preflop
+                        if "Dealt cards=" in prev_action.get("action", ""):
+                            is_preflop = False
+                            break
+                    
+                    # Count hands played by each player
+                    if is_preflop and action_type not in ["fold", "check"]:
+                        # This player voluntarily put money in pot (call or raise)
+                        vpip_counts[player_idx] += 1
+                        # Only count each player once per hand
+                        break
+        
+        # Calculate PFR (players who raised preflop)
+        for player in self.players:
+            for hand in player.hand_history:
+                dealer_pos = hand.get("dealer_position", 0)
+                
+                for action in hand["actions"]:
+                    player_idx = action["player"]
+                    action_type = action["action"]
+                    
+                    # Only count actions in preflop street
+                    is_preflop = True
+                    for prev_action in hand["actions"][:hand["actions"].index(action)]:
+                        # If we see board cards, we're past preflop
+                        if "Dealt cards=" in prev_action.get("action", ""):
+                            is_preflop = False
+                            break
+                    
+                    # Count preflop raises
+                    if is_preflop and action_type.startswith("raise_to:"):
+                        pfr_counts[player_idx] += 1
+                        break
+        
+        # Count total hands each player was dealt
+        for player_idx, player in enumerate(self.players):
+            hand_counts[player_idx] = len(player.hand_history)
+        
+        # Print performance stats
         for idx, player in enumerate(self.players):
-            wins = sum(1 for hand in player.hand_history if hand["result"][f"profit_p{idx}"] > 0)
-            profit = sum(hand["result"][f"profit_p{idx}"] for hand in player.hand_history)
+            wins = sum(1 for hand in player.hand_history if hand["result"].get(f"profit_p{idx}", 0) > 0)
+            # Calculate profit as the difference between final stack and initial stack
+            profit = player.stack - player.initial_stack
+            total_profit += profit
+            
+            # Calculate VPIP and PFR as percentages
+            vpip_pct = (vpip_counts[idx] / hand_counts[idx] * 100) if hand_counts[idx] > 0 else 0
+            pfr_pct = (pfr_counts[idx] / hand_counts[idx] * 100) if hand_counts[idx] > 0 else 0
+            
             print(f"Player {player.name}: {wins}/{self.hands} hands won, Total profit: {profit}")
+            print(f"  VPIP: {vpip_pct:.1f}% (voluntarily put money in {vpip_counts[idx]}/{hand_counts[idx]} hands)")
+            print(f"  PFR: {pfr_pct:.1f}% (raised preflop in {pfr_counts[idx]}/{hand_counts[idx]} hands)")
+        
+        # Verify zero-sum property
+        if total_profit != 0:
+            print(f"Warning: Total profit ({total_profit}) should be zero in a zero-sum game")
 
 #######################################################################
 # ─────────────────────  CLI ENTRY POINT  ─────────────────────────────
 #######################################################################
 
 if __name__ == "__main__":
-    hands_to_play = int(os.getenv("NUM_HANDS", "10"))
+    hands_to_play = 3 
     orch = Orchestrator(hands=hands_to_play)
     asyncio.run(orch.run())
-    # self.stacks = tuple(st.stacks)
-
-    async def run(self):
-        for h in range(1, self.hands + 1):
-            await self._play_hand(h)
 
