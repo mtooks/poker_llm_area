@@ -76,8 +76,28 @@ class PromptAdapter:
         else:
             min_raise = 'Cannot Raise'
 
+        # --- Position logic ---
+        # We need to know the dealer position and the mapping from state index to actual player
+        # We'll assume the orchestrator sets: st.dealer_position and st.players (if not, fallback to heads-up default)
+        try:
+            dealer_position = st.dealer_position
+            player_count = len(st.stacks)
+            # Map state player index to actual player index
+            actual_player_idx = (player + dealer_position) % player_count
+            # For heads-up: player 0 is Button (SB), player 1 is BB
+            if player_count == 2:
+                position = "Button" if player == 0 else "Big Blind"
+            else:
+                # For more players, you can expand this mapping as needed
+                pos_names = ["Button", "Small Blind", "Big Blind", "UTG", "Hijack", "Cutoff"]
+                position = pos_names[player % len(pos_names)]
+        except Exception:
+            # Fallback for robustness
+            position = "Button" if player == 0 else "Big Blind"
+
         return {
         "Current Street": street_name,
+        "Position": position,
             # "button": st.button_index,  # Only include if you track button_index elsewhere
         # "actor": player,
         "board": card_str_list(st.get_board_cards(0)),
