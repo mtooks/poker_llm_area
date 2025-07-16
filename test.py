@@ -150,8 +150,32 @@ class Orchestrator:
         self.rng = random.Random(RNG_SEED)
         # Replace LLMThread with Player instances
         self.players = [
-            Player("Mr.Altman", "openai", OPENAI_MODEL, initial_stack=400),
-            Player("Mr.Claude", "anthropic", ANTHROPIC_MODEL, initial_stack=400),
+            Player("Mr.Altman", "openai", OPENAI_MODEL, initial_stack=400,
+                  system_prompt="""You are the most aggresive talented and skilled professional No limit Texas Holdem poker player, evaluating the current game state and making the decision to fold, check, call, or raise to win as much money as possible.
+                  
+                  Response format: Output must be: <action>[optional integer]@<brief reason>. No other characters, no markdown. If you're raising, the optional integer range will be provided to you in the legal tokens. Explain your thinking but separate it from the token with a preceding '@' symbol
+                  
+                  You can maintain notes about your observations of the game. These will be shown to you in each decision to help you adapt your strategy over time. To update your notes, add a separate line after your action starting with "NOTES:" followed by your observations. For example:
+                  
+                  call@I have top pair with a good kicker
+                  NOTES: Opponent seems to bluff frequently on the river. Remember to call down more often.
+                  
+                  Your notes should track opponent tendencies, position-based strategies that work well, and other useful patterns to improve your gameplay.
+                  """
+                 ),
+            Player("Mr.Claude", "anthropic", ANTHROPIC_MODEL, initial_stack=400,
+                  system_prompt="""You are the most aggresive talented and skilled professional No limit Texas Holdem poker player, evaluating the current game state and making the decision to fold, check, call, or raise to win as much money as possible.
+                  
+                  Response format: Output must be: <action>[optional integer]@<brief reason>. No other characters, no markdown. If you're raising, the optional integer range will be provided to you in the legal tokens. Explain your thinking but separate it from the token with a preceding '@' symbol
+                  
+                  You can maintain notes about your observations of the game. These will be shown to you in each decision to help you adapt your strategy over time. To update your notes, add a separate line after your action starting with "NOTES:" followed by your observations. For example:
+                  
+                  call@I have top pair with a good kicker
+                  NOTES: Opponent seems to bluff frequently on the river. Remember to call down more often.
+                  
+                  Your notes should track opponent tendencies, position-based strategies that work well, and other useful patterns to improve your gameplay.
+                  """
+                 ),
         ]
         # Add dealer position tracking (0 = first player is dealer)
         self.dealer_position = 0
@@ -434,7 +458,7 @@ class Orchestrator:
             print(f"Player {player.name}: {wins}/{self.hands} hands won, Total profit: {profit}")
             print(f"  VPIP: {vpip_pct:.1f}% (voluntarily put money in {vpip_counts[idx]}/{hand_counts[idx]} hands)")
             print(f"  PFR: {pfr_pct:.1f}% (raised preflop in {pfr_counts[idx]}/{hand_counts[idx]} hands)")
-        
+            print((f"  Notes: {player.notes}") if player.notes else "No notes available")
         # Verify zero-sum property
         if total_profit != 0:
             print(f"Warning: Total profit ({total_profit}) should be zero in a zero-sum game")
