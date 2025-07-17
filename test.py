@@ -1,7 +1,8 @@
 # poker_llm_orchestrator.py
 """
 TODO: Fix the Order of logging and output display.
-
+Do different prompts actually make a difference? i.e. does Claude play better with a different prompt?
+    If all models are given the same prompt, does win rate change?
 
 The script is deliberately minimal: no fancy logging, retry policy, cost
 tracking or multi‑table scheduler. Those are left for you to flesh out once the
@@ -306,7 +307,8 @@ class Orchestrator:
             if not LEGAL_TOKEN_RE.match(rsp):
                 print(f'!!!!!!!!!!!!!!ILLEGAL MOVE!!!!!!!: {rsp}') # auto‑punish illegal output
                 rsp = "fold" 
-                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action               
+                hand_data["actions"][-1]["action"] = "fold"  # Update to actual action         
+                illegal_moves_count += 1      
             try:               
                 PromptAdapter.apply_token(st, rsp)
                 # Print only new developments:
@@ -369,11 +371,13 @@ class Orchestrator:
         self.dealer_position = (self.dealer_position + 1) % len(self.players)
 
     async def run(self):
+        illegal_moves_count = 0
         for h in range(1, self.hands + 1):
             await self._play_hand(h)
         
         # Print overall performance
         print("\n=== Overall Performance ===")
+        print(f"Bad Moves Count: {illegal_moves_count}")
         total_profit = 0  # To verify zero-sum property
         
         # Calculate VPIP and PFR stats
@@ -468,7 +472,7 @@ class Orchestrator:
 #######################################################################
 
 if __name__ == "__main__":
-    hands_to_play = 3 
+    hands_to_play = 20
     orch = Orchestrator(hands=hands_to_play)
     asyncio.run(orch.run())
 
