@@ -42,8 +42,16 @@ GAME_CONFIG = {
     "blinds": (50, 100),   # Small blind, big blind
     "initial_stack": 400,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
+    "see_model_monologue": True,  # Toggle player commentary on/off
+    "min_bet": 2,          # Minimum bet amount
+    "ante_amount": 0,      # Ante amount per player (0 for no ante)
 }
 ```
+
+**New Settings:**
+- `see_model_monologue`: When `True`, shows player commentary (e.g., "GPT-4: I'm calling because..."). When `False`, only shows actions without commentary.
+- `min_bet`: Minimum bet amount for the game
+- `ante_amount`: Ante amount per player (set to 0 for no ante games)
 
 ### Player Configurations
 

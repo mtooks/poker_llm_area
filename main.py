@@ -18,10 +18,12 @@ from utils.action_converter import ActionConverter
 
 from game_config import GAME_CONFIG, PLAYER_CONFIGS
 
-# Game configuration
+# Game configuration - all values now read from GAME_CONFIG
 BLINDS = GAME_CONFIG["blinds"]
-MIN_BET = BLINDS[1]
+MIN_BET = GAME_CONFIG["min_bet"]
 RNG_SEED = GAME_CONFIG["rng_seed"]
+ANTE_AMOUNT = GAME_CONFIG["ante_amount"]
+SEE_MODEL_MONOLOGUE = GAME_CONFIG["see_model_monologue"]
 LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+)$")
 
 ############################################################
@@ -32,12 +34,12 @@ class PromptAdapter:
     """Helpers for state → prompt and token → state transition."""
     
     @staticmethod
-    def visible_state(st, player: int) -> Dict[str, Any]:
+    def visible_state(st, player: int, player_names=None) -> Dict[str, Any]:
         def card_str_list(cards):
             return [str(card) for card in cards]
 
         def action_str(op):
-            return ActionConverter.to_human_readable(op)
+            return ActionConverter.to_human_readable(op, player_names)
 
         street_map = {0: "Pre flop", 1: "Flop", 2: "Turn", 3: "River"}
         street_name = street_map.get(st.street_index, "Unknown")
@@ -133,6 +135,10 @@ class GameOrchestrator:
                 raise ValueError(f"Invalid stack size: {i}. Must be non-negative.")
         
         player_count = len(self.players)
+        
+        # Set up antes based on config
+        raw_antes = {0: ANTE_AMOUNT} if ANTE_AMOUNT > 0 else {0: 0}
+        
         return NoLimitTexasHoldem.create_state(
             (
                 Automation.ANTE_POSTING,
@@ -148,9 +154,9 @@ class GameOrchestrator:
                 Automation.CHIPS_PULLING,
             ),
             False,       # ante_trimming_status
-            {0: 0},      # raw_antes
-            (1, 2),      # raw_blinds_or_straddles
-            2,           # min_bet
+            raw_antes,   # raw_antes - now from config
+            BLINDS,      # raw_blinds_or_straddles - now from config
+            MIN_BET,     # min_bet - now from config
             stacks,      # raw_starting_stacks
             player_count,  # player_count - now dynamic
             mode=Mode.CASH_GAME,
@@ -220,7 +226,11 @@ class GameOrchestrator:
             actual_player_idx = (plr_idx + self.dealer_position) % len(self.players)
             player_name = self.players[actual_player_idx].name
             legal = PromptAdapter.legal_tokens(st)
-            game_state = PromptAdapter.visible_state(st, plr_idx)
+            
+            # Get player names in position order for this hand
+            players_in_position = self.get_players_in_position_order()
+            player_names = [p.name for p in players_in_position]
+            game_state = PromptAdapter.visible_state(st, plr_idx, player_names)
             
             # Get player decision
             rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
@@ -228,7 +238,8 @@ class GameOrchestrator:
             # Parse response
             try:
                 rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
-                print(f"{player_name}: {commentary}")
+                if SEE_MODEL_MONOLOGUE:
+                    print(f"{player_name}: {commentary}")
                 hand_data["actions"].append({
                     "player": actual_player_idx,
                     "action": rsp,
@@ -257,6 +268,7 @@ class GameOrchestrator:
                 # Print new actions
                 if len(st.operations) > last_history_len:
                     filtered_ops = (BetCollection, CardBurning, HoleDealing, ChipsPulling, BlindOrStraddlePosting)                    
+                    
                     for op in st.operations[last_history_len:]:
                         if isinstance(op, HoleCardsShowingOrMucking) and op.hole_cards:
                             cards_str = [str(card) for card in op.hole_cards]
@@ -264,7 +276,7 @@ class GameOrchestrator:
                             actual_player = (op.player_index + self.dealer_position) % len(self.players)
                             print(f"Player {self.players[actual_player].name} shows: {emoji_cards}")
                         elif not isinstance(op, filtered_ops):
-                            readable_action = ActionConverter.to_human_readable(op)
+                            readable_action = ActionConverter.to_human_readable(op, player_names)
                             if readable_action and readable_action.strip():  # Only print if there's actually something to show
                                 print(f"Action: {readable_action}")
 
@@ -338,6 +350,9 @@ async def main():
     print("=== Poker Game with Player Factory ===")
     print(f"Players: {[config['name'] for config in PLAYER_CONFIGS]}")
     print(f"Hands to play: {GAME_CONFIG['hands']}")
+    print(f"Blinds: {BLINDS[0]}/{BLINDS[1]}")
+    print(f"Initial stack: {GAME_CONFIG['initial_stack']}")
+    print(f"Model commentary: {'ON' if SEE_MODEL_MONOLOGUE else 'OFF'}")
     
     game = GameOrchestrator(hands=GAME_CONFIG['hands'])
     await game.run()
