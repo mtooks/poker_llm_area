@@ -10,6 +10,7 @@ from pokerkit import Automation, Mode, NoLimitTexasHoldem
 from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling
 
 from players.player_factory import PlayerFactory
+from utils.action_converter import ActionConverter
 
 ############################################################
 # ───────────────────  CONFIG  ─────────────────────────────
@@ -36,13 +37,7 @@ class PromptAdapter:
             return [str(card) for card in cards]
 
         def action_str(op):
-            cls = type(op).__name__
-            if cls == 'BoardDealing':
-                return f"Dealt cards={op.cards}"
-            if hasattr(op, "player_index") and hasattr(op, "amount"):
-                return f"{cls}(player={op.player_index}, amount={getattr(op, 'amount', None)})"
-            else:
-                return None
+            return ActionConverter.to_human_readable(op)
 
         street_map = {0: "Pre flop", 1: "Flop", 2: "Turn", 3: "River"}
         street_name = street_map.get(st.street_index, "Unknown")
@@ -186,8 +181,7 @@ class GameOrchestrator:
         """Play a single hand."""
         st = self._make_state()
         last_board = []
-        last_stacks = list(st.stacks)
-        last_history_len = 0
+        last_history_len = len(st.operations)  # Initialize to current operations to avoid showing setup actions
         
         print(f"\n=== Hand {hand_no} ===")
         
@@ -204,7 +198,7 @@ class GameOrchestrator:
         # Track hand data
         hand_data = {
             "hand_id": hand_no,
-            "starting_stacks": last_stacks.copy(),
+            "starting_stacks": list(st.stacks).copy(),
             "actions": [],
             "final_board": [],
             "dealer_position": self.dealer_position,
@@ -258,11 +252,7 @@ class GameOrchestrator:
                 PromptAdapter.apply_token(st, rsp)
                 
                 # Print new developments
-                board = [str(card) for card in st.get_board_cards(0)]
-                if board != last_board:
-                    print(f"Board: {[self.card_to_emoji(card) for card in board]}")
-                    last_board = board.copy()
-                    hand_data["final_board"] = board.copy()
+                board = [str(card) for card in st.get_board_cards(0)]                
                     
                 # Print new actions
                 if len(st.operations) > last_history_len:
@@ -273,16 +263,20 @@ class GameOrchestrator:
                             emoji_cards = [self.card_to_emoji(card) for card in cards_str]
                             actual_player = (op.player_index + self.dealer_position) % len(self.players)
                             print(f"Player {self.players[actual_player].name} shows: {emoji_cards}")
-                        if not isinstance(op, filtered_ops):
-                            print(f"Action: {op}")
+                        elif not isinstance(op, filtered_ops):
+                            readable_action = ActionConverter.to_human_readable(op)
+                            if readable_action and readable_action.strip():  # Only print if there's actually something to show
+                                print(f"Action: {readable_action}")
+
+                if board != last_board:
+                    print(f"Board: {[self.card_to_emoji(card) for card in board]}")
+                    last_board = board.copy()
+                    hand_data["final_board"] = board.copy()
+
                 last_history_len = len(st.operations)
                     
-                # Print stack changes
-                if list(st.stacks) != last_stacks:
-                    players_in_position = self.get_players_in_position_order()
-                    stack_str = ", ".join([f"{players_in_position[i].name}={st.stacks[i]}" for i in range(len(st.stacks))])
-                    print(f"Stacks: {stack_str}")
-                    last_stacks = list(st.stacks)
+                # Print stack changes only at the end of the hand
+                # (Remove the stack printing here - it will be shown at the end of the hand)
 
             except Exception as e:
                 print(f"Error in hand {hand_no}: {e}")

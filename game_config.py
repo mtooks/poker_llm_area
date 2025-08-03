@@ -2,7 +2,7 @@
 
 # Game settings
 GAME_CONFIG = {
-    "hands": 10,           # Number of hands to play
+    "hands": 2,           # Number of hands to play
     "blinds": (50, 100),   # Small blind, big blind
     "initial_stack": 400,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
@@ -20,11 +20,11 @@ PLAYER_CONFIGS = [
         "provider": "anthropic",
         "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
     },
-    {
-        "name": "Claude2",
-        "provider": "anthropic",
-        "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
-    },
+    # {
+    #     "name": "Claude2",
+    #     "provider": "anthropic",
+    #     "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    # },
 ]
 
 # Alternative configurations you can use:
