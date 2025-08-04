@@ -4,9 +4,9 @@
 GAME_CONFIG = {
     "hands": 5,           # Number of hands to play
     "blinds": (50, 100),   # Small blind, big blind
-    "initial_stack": 1000,  # Starting stack for each player
+    "initial_stack": 10000,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
-    "see_model_monologue": False,  # Toggle player commentary on/off
+    "see_model_monologue": True,  # Toggle player commentary on/off
     "min_bet": 2,          # Minimum bet amount
     "ante_amount": 0,      # Ante amount per player (0 for no ante)
 }
@@ -18,15 +18,15 @@ PLAYER_CONFIGS = [
         "provider": "openai", 
         "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
     },
+    # {
+    #     "name": "Claude",
+    #     "provider": "anthropic",
+    #     "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    # },
     {
-        "name": "Claude",
+        "name": "sonnet",
         "provider": "anthropic",
-        "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
-    },
-    {
-        "name": "Claudette",
-        "provider": "anthropic",
-        "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+        "model": "claude-3-7-sonnet-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
     },
 ]
 
