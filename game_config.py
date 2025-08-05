@@ -28,6 +28,11 @@ PLAYER_CONFIGS = [
         "provider": "anthropic",
         "model": "claude-3-7-sonnet-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
     },
+    {
+        "name": "Chamath",
+        "provider": "all-in",
+        "model": "all-in-bot",
+    }
 ]
 
 # Alternative configurations you can use:

@@ -3,6 +3,15 @@
 TODO: Fix the Order of logging and output display.
 Do different prompts actually make a difference? i.e. does Claude play better with a different prompt?
     If all models are given the same prompt, does win rate change?
+Long Term deception
+What if the players could talk to each other? Could they get others to fold?
+Replicate results from vending machine paper (double check) where moer context = shittier play
+Add pot odds, equity, stack to pot ratio to LLM. 
+Add multiplayer games (claude vs grok vs gemini vs openai). (chatgpt 1 vs 2 vs 3 vs 4)
+Vary starting stacks
+For each player, add a memory of how other players played in previous hands.
+Benchmark vs GTO
+According to twitter, having it return json is much more reliable
 
 The script is deliberately minimal: no fancy logging, retry policy, cost
 tracking or multi‑table scheduler. Those are left for you to flesh out once the
@@ -180,15 +189,24 @@ class Orchestrator:
         ]
         # Add dealer position tracking (0 = first player is dealer)
         self.dealer_position = 0
+        # Initialize illegal moves counter
+        self.illegal_moves_count = 0
 
     # Build a fresh Poker‑Kit state
         # Use the dealer position to determine order of play
     def _make_state(self):
         stacks = tuple(player.stack for player in self.get_players_in_position_order())
         for i in stacks:
-            if i <= 0:
+            if i < 0:
                 #TODO: handle someone busting
                 raise ValueError(f"Invalid stack size: {i}. Must be non-negative.")
+        
+        # Check if any player is busted (has 0 chips)
+        busted_players = [i for i, stack in enumerate(stacks) if stack == 0]
+        if busted_players:
+            busted_names = [self.get_players_in_position_order()[i].name for i in busted_players]
+            print(f"Warning: Players with 0 chips detected: {busted_names}")
+            # For now, we'll continue but this could be enhanced to handle elimination
         return NoLimitTexasHoldem.create_state(
             (
                 Automation.ANTE_POSTING,
@@ -308,7 +326,7 @@ class Orchestrator:
                 print(f'!!!!!!!!!!!!!!ILLEGAL MOVE!!!!!!!: {rsp}') # auto‑punish illegal output
                 rsp = "fold" 
                 hand_data["actions"][-1]["action"] = "fold"  # Update to actual action         
-                illegal_moves_count += 1      
+                self.illegal_moves_count += 1      
             try:               
                 PromptAdapter.apply_token(st, rsp)
                 # Print only new developments:
@@ -371,13 +389,22 @@ class Orchestrator:
         self.dealer_position = (self.dealer_position + 1) % len(self.players)
 
     async def run(self):
-        illegal_moves_count = 0
+        # Reset illegal moves counter for this session
+        self.illegal_moves_count = 0
         for h in range(1, self.hands + 1):
+            # Check if any player is eliminated before starting the hand
+            active_players = [p for p in self.players if p.stack > 0]
+            if len(active_players) < 2:
+                eliminated_players = [p.name for p in self.players if p.stack == 0]
+                print(f"\nGame ended early: Players eliminated: {eliminated_players}")
+                print(f"Remaining hands skipped: {self.hands - h}")
+                break
+                
             await self._play_hand(h)
         
         # Print overall performance
         print("\n=== Overall Performance ===")
-        print(f"Bad Moves Count: {illegal_moves_count}")
+        print(f"Bad Moves Count: {self.illegal_moves_count}")
         total_profit = 0  # To verify zero-sum property
         
         # Calculate VPIP and PFR stats

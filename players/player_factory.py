@@ -5,6 +5,7 @@ from typing import Optional, Dict, List
 from .openai_player import OpenAIPlayer
 from .gemini_player import GeminiPlayer
 from .anthropic_player import AnthropicPlayer
+from .all_in_player import AllInPlayer
 
 
 class PlayerFactory:
@@ -14,7 +15,8 @@ class PlayerFactory:
     SUPPORTED_MODELS = {
         "openai": ["gpt-4o-mini"],
         "gemini": ["gemini-pro", "gemini-pro-vision"],
-        "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"]
+        "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"],
+        "all-in": ["all-in-bot"]
     }
     
     @classmethod
@@ -75,6 +77,8 @@ class PlayerFactory:
             return GeminiPlayer(name, model, **kwargs)
         elif provider == "anthropic":
             return AnthropicPlayer(name, model, **kwargs)
+        elif provider == "all-in":
+            return AllInPlayer(name, model, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")
@@ -92,4 +96,9 @@ class PlayerFactory:
     @classmethod
     def create_anthropic_player(cls, name: str, model: str = "claude-3-sonnet", **kwargs):
         """Convenience method to create an Anthropic player."""
-        return cls.create_player(name, "anthropic", model, **kwargs) 
+        return cls.create_player(name, "anthropic", model, **kwargs)
+    
+    @classmethod
+    def create_all_in_player(cls, name: str, model: str = "all-in-bot", **kwargs):
+        """Convenience method to create an All-In player."""
+        return cls.create_player(name, "all-in", model, **kwargs) 

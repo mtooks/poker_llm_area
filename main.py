@@ -131,8 +131,15 @@ class GameOrchestrator:
         """Create a fresh PokerKit state."""
         stacks = tuple(player.stack for player in self.get_players_in_position_order())
         for i in stacks:
-            if i <= 0:
+            if i < 0:
                 raise ValueError(f"Invalid stack size: {i}. Must be non-negative.")
+        
+        # Check if any player is busted (has 0 chips)
+        busted_players = [i for i, stack in enumerate(stacks) if stack == 0]
+        if busted_players:
+            busted_names = [self.get_players_in_position_order()[i].name for i in busted_players]
+            print(f"Warning: Players with 0 chips detected: {busted_names}")
+            # For now, we'll continue but this could be enhanced to handle elimination
         
         player_count = len(self.players)
         
@@ -320,6 +327,14 @@ class GameOrchestrator:
         illegal_moves_count = 0
         
         for h in range(self.hands):
+            # Check if any player is eliminated before starting the hand
+            active_players = [p for p in self.players if p.stack > 0]
+            if len(active_players) < 2:
+                eliminated_players = [p.name for p in self.players if p.stack == 0]
+                print(f"\nGame ended early: Players eliminated: {eliminated_players}")
+                print(f"Remaining hands skipped: {self.hands - h}")
+                break
+                
             await self._play_hand(h)
         
         # Print performance summary
