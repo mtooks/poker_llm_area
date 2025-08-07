@@ -5,6 +5,7 @@ from typing import Optional, Dict, List
 from .openai_player import OpenAIPlayer
 from .gemini_player import GeminiPlayer
 from .anthropic_player import AnthropicPlayer
+from .all_in_player import AllInPlayer
 
 
 class PlayerFactory:
@@ -76,6 +77,8 @@ class PlayerFactory:
             return GeminiPlayer(name, model, **kwargs)
         elif provider == "anthropic":
             return AnthropicPlayer(name, model, **kwargs)
+        elif provider == "all-in":
+            return AllInPlayer(name, model, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")

@@ -4,6 +4,7 @@ from .base_player import BasePlayer
 from .openai_player import OpenAIPlayer
 from .gemini_player import GeminiPlayer
 from .anthropic_player import AnthropicPlayer
+from .all_in_player import AllInPlayer
 from .player_factory import PlayerFactory
 
 __all__ = [
@@ -11,5 +12,6 @@ __all__ = [
     "OpenAIPlayer", 
     "GeminiPlayer",
     "AnthropicPlayer",
+    "AllInPlayer",
     "PlayerFactory"
 ] 
