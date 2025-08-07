@@ -14,7 +14,8 @@ class PlayerFactory:
     SUPPORTED_MODELS = {
         "openai": ["gpt-4o-mini"],
         "gemini": ["gemini-pro", "gemini-pro-vision"],
-        "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"]
+        "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"],
+        "grok": ["grok-4"]
     }
     
     @classmethod
@@ -93,3 +94,7 @@ class PlayerFactory:
     def create_anthropic_player(cls, name: str, model: str = "claude-3-sonnet", **kwargs):
         """Convenience method to create an Anthropic player."""
         return cls.create_player(name, "anthropic", model, **kwargs) 
+
+    def create_grok_player(cls, name: str, model: str = "claude-3-sonnet", **kwargs):
+        return cls.create_player(name, "grok", model, **kwargs)
+    

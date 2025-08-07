@@ -1,4 +1,14 @@
-"""Simplified poker game using the new player factory."""
+"""Simplified poker game using the new player factory.
+TODO: Fix the Order of logging and output display.
+Do different prompts actually make a difference? i.e. does Claude play better with a different prompt?
+    If all models are given the same prompt, does win rate change?
+
+The script is deliberately minimal: no fancy logging, retry policy, cost
+tracking or multi‑table scheduler. Those are left for you to flesh out once the
+core loop behaves.
+Add gemini
+add grok
+"""
 
 import asyncio
 import json
