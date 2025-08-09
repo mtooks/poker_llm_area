@@ -82,14 +82,14 @@ class AllInPlayer(BasePlayer):
         response = self._generate_all_in_response(game_state)
         
         # Update conversation history for consistency
-        prompt_json = {
-            "state": game_state,
-            "legal": legal_actions,
-            "instructions": "You can update your notes by including a line starting with 'NOTES:' after your action and commentary.",
-        }
+        # prompt_json = {
+        #     "state": game_state,
+        #     "legal": legal_actions,
+        #     "instructions": "You can update your notes by including a line starting with 'NOTES:' after your action and commentary.",
+        # }
         
-        # Add to conversation history
-        self.conversation_history.append({"role": "user", "content": str(prompt_json)})
-        self.conversation_history.append({"role": "assistant", "content": response})
+        # # Add to conversation history
+        # self.conversation_history.append({"role": "user", "content": str(prompt_json)})
+        # self.conversation_history.append({"role": "assistant", "content": response})
         
         return response 

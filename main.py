@@ -18,14 +18,8 @@ from typing import Any, Dict, List
 
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
 from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling
-
 from players.player_factory import PlayerFactory
 from utils.action_converter import ActionConverter
-
-############################################################
-# ───────────────────  CONFIG  ─────────────────────────────
-############################################################
-
 from game_config import GAME_CONFIG, PLAYER_CONFIGS
 
 # Game configuration - all values now read from GAME_CONFIG
@@ -36,9 +30,6 @@ ANTE_AMOUNT = GAME_CONFIG["ante_amount"]
 SEE_MODEL_MONOLOGUE = GAME_CONFIG["see_model_monologue"]
 LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+)$")
 
-############################################################
-# ───────────────  PROMPT ADAPTER  ─────────────────────────
-############################################################
 
 class PromptAdapter:
     """Helpers for state → prompt and token → state transition."""
@@ -275,6 +266,7 @@ class GameOrchestrator:
                 print(f'ILLEGAL MOVE: {rsp} - auto-folding')
                 rsp = "fold" 
                 hand_data["actions"][-1]["action"] = "fold"
+                self.players[actual_player_idx].illegal_moves += 1
                 
             try:               
                 PromptAdapter.apply_token(st, rsp)
@@ -324,7 +316,7 @@ class GameOrchestrator:
         for i in range(len(st.stacks)):
             hand_data["result"][f"profit_p{i}"] = st.stacks[i] - hand_data["starting_stacks"][i]
         
-        # Update player stacks and memory
+        # Update player stacks and memoryclear
         for idx, player in enumerate(players_in_position):
             player.update_stack(st.stacks[idx])
             player.update_memory(hand_data)
@@ -334,8 +326,7 @@ class GameOrchestrator:
 
     async def run(self):
         """Run the complete game."""
-        illegal_moves_count = 0
-        
+       
         for h in range(self.hands):
             # Check if any player is eliminated before starting the hand
             active_players = [p for p in self.players if p.stack > 0]
@@ -349,7 +340,6 @@ class GameOrchestrator:
         
         # Print performance summary
         print("\n=== Performance Summary ===")
-        print(f"Illegal moves: {illegal_moves_count}")
         
         for idx, player in enumerate(self.players):
             wins = 0
@@ -363,8 +353,9 @@ class GameOrchestrator:
             win_rate = (wins / self.hands * 100) if self.hands > 0 else 0
             
             print(f"{player.name}: {wins}/{self.hands} wins ({win_rate:.1f}%), Profit: {profit}")
+            print(f"Illegal moves: {player.illegal_moves}")
             if player.notes:
-                print(f"  Notes: {player.notes[:100]}...")
+                print(f"  Notes: {player.notes}")
 
 ############################################################
 # ─────────────────────  MAIN  ─────────────────────────────

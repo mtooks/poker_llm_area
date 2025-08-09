@@ -3,6 +3,8 @@
 import os
 from pathlib import Path
 from typing import Sequence, Dict
+from pydantic import BaseModel
+
 
 # Handle optional imports
 try:
@@ -55,11 +57,50 @@ class OpenAIPlayer(BasePlayer):
         self.client = openai.AsyncOpenAI(api_key=openai_key)
 
     async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
-        """Send messages to OpenAI API and get response."""
-        rsp = await self.client.chat.completions.create(
-            model=self.model,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=400,
-        )
-        return rsp.choices[0].message.content.strip() 
+        """Send messages to OpenAI API and get response with structured output when possible."""
+        # Prefer structured output to reduce parsing errors
+        class PokerAction(BaseModel):
+            action: str
+            amount: int
+            reason: str
+            notes: str
+
+        try:
+            rsp = await self.client.responses.parse(
+                model = self.model,
+                input = messages,
+                text_format = PokerAction
+            )
+
+            content = rsp.output_parsed
+
+        except Exception:
+            print('Openai Structured output failed!')
+            # Fallback: no structured output
+            rsp = await self.client.chat.completions.create(
+                model=self.model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=400,
+            )
+            return rsp.choices[0].message.content.strip()
+
+        # Try to convert structured JSON into required string format
+        try:
+            action = content.action
+            amount = content.amount
+            reason = content.reason
+            notes = content.notes
+
+            if action in ("fold", "check", "call"):
+                result = f"{action}@{reason}" if reason else action
+            elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
+                result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
+            else:
+                print('Error in structured output. Debug openai player')
+            if notes:
+                result += f"\nNOTES: {notes}"
+            return result
+        except Exception:
+            # If JSON parsing fails, return raw content
+            return content.strip() if isinstance(content, str) else str(content)

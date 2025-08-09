@@ -6,7 +6,7 @@ from .openai_player import OpenAIPlayer
 from .gemini_player import GeminiPlayer
 from .anthropic_player import AnthropicPlayer
 from .all_in_player import AllInPlayer
-
+from .grok_player import GrokPlayer
 
 class PlayerFactory:
     """Factory class for creating poker players with different LLM providers."""
@@ -16,7 +16,7 @@ class PlayerFactory:
         "openai": ["gpt-4o-mini"],
         "gemini": ["gemini-pro", "gemini-pro-vision"],
         "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"],
-        "grok": ["grok-4"]
+        "grok": ["grok-4","grok-3","grok-3-mini"]
     }
     
     @classmethod
@@ -79,6 +79,8 @@ class PlayerFactory:
             return AnthropicPlayer(name, model, **kwargs)
         elif provider == "all-in":
             return AllInPlayer(name, model, **kwargs)
+        elif provider == "grok":
+            return GrokPlayer(name, model, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")
@@ -98,6 +100,8 @@ class PlayerFactory:
         """Convenience method to create an Anthropic player."""
         return cls.create_player(name, "anthropic", model, **kwargs) 
 
-    def create_grok_player(cls, name: str, model: str = "claude-3-sonnet", **kwargs):
+    @classmethod
+    def create_grok_player(cls, name: str, model: str = "grok-4", **kwargs):
+        """Convenience method to create a Grok (xAI) player."""
         return cls.create_player(name, "grok", model, **kwargs)
     

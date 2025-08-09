@@ -28,6 +28,7 @@ class BasePlayer(ABC):
         self.hand_history = []
         self.conversation_history = []
         self.system_prompt = system_prompt or self._get_default_system_prompt()
+        self.structured_system_prompt = self._get_structured_system_prompt()
         
         # Add tracking for strategic decisions
         self.decision_times = []
@@ -37,9 +38,22 @@ class BasePlayer(ABC):
         self.value_bets = 0
         self.value_bet_successes = 0
         self.player_index = None  # Will be set in update_memory
+        self.illegal_moves = 0
         
         # Add player notes - a space for the player to record observations
         self.notes = ""
+
+    
+    def _get_structured_system_prompt(self) -> str:
+        """Get the default system prompt for poker players."""
+        return """You are a seasoned and experienced No limit Texas Holdem poker player, evaluating the current game state and making the decision 
+        to fold, check, call, or raise to win as much money as possible. Do not fold when you are not facing a bet. Playing safe is not neccesarily the best strategy. Think about what 
+        cards you have, which ones your opponents have, and what you could represent. Given this, then decide whether or not it is a good time to bluff. When you 
+        have a bad hand, think about what you could represent to your opponents. If you have a good hand, think about how to extract the maxmium value from your opponents.        
+        You can maintain notes about your observations of the game. These notes will be shown to you in each decision to help you adapt your strategy over time. Add useful information about your opponent's tendencies, your own statistics, and reminders of effective strategies.
+        Output your action in the given structured format. Return an action from the ones provided, and the amount if raising, as well as your reasoning and notes if you want to take them.
+
+       """
 
     def _get_default_system_prompt(self) -> str:
         """Get the default system prompt for poker players."""
@@ -52,6 +66,7 @@ class BasePlayer(ABC):
         You can maintain notes about your observations of the game. These notes will be shown to you in each decision to help you adapt your strategy over time. Add useful information about your opponent's tendencies, your own statistics, and reminders of effective strategies.
         """
 
+
     @abstractmethod
     async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
         """Send messages to the LLM provider and get response."""
@@ -60,7 +75,12 @@ class BasePlayer(ABC):
     async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
         """Route request to appropriate LLM provider with conversation history."""
         # Combine system message, conversation history, and current message
+
+        # if strucutured output, use a different flag
+
         full_messages = [{"role": "system", "content": self.system_prompt}]
+
+        
         full_messages.extend(self.conversation_history)
         
         # Only add the last user message if it's not already in conversation history
@@ -68,6 +88,7 @@ class BasePlayer(ABC):
                                                           messages[-1] != self.conversation_history[-1]):
             full_messages.append(messages[-1])
         
+
         response = await self._chat(full_messages)
         
         # Update conversation history with user's message and AI's response
