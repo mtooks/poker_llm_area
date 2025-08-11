@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 from typing import Sequence, Dict
+from pydantic import BaseModel
 
 # Handle optional imports
 try:
@@ -37,12 +38,7 @@ class GeminiPlayer(BasePlayer):
 
     def _setup_gemini_client(self):
         """Setup Gemini client with API key."""
-        if not GEMINI_AVAILABLE:
-            raise ImportError("Gemini provider requires the 'google-generativeai' package. Install with 'pip install google-generativeai'")
-        
-        if not DOTENV_AVAILABLE:
-            raise ImportError("Gemini provider requires the 'python-dotenv' package. Install with 'pip install python-dotenv'")
-        
+                
         # Load environment variables from .env file if it exists
         env_path = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / '.env'
         if env_path.exists():
@@ -52,10 +48,9 @@ class GeminiPlayer(BasePlayer):
         if not gemini_key:
             raise ValueError("GEMINI_KEY environment variable is not set")
         
-        genai.configure(api_key=gemini_key)
-        self.client = genai.GenerativeModel(self.model)
+        self.client = genai.Client(api_key = gemini_key)
 
-    async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
+    def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
         """Send the prompt to Gemini via persistent client."""
         # Build the full conversation history for context
         full_history = ""
@@ -67,5 +62,32 @@ class GeminiPlayer(BasePlayer):
             elif msg["role"] == "assistant":
                 full_history += f"<assistant>\n{msg['content']}\n</assistant>\n"
         
-        resp = self.client.generate_content(full_history)
-        return resp.text.strip() 
+        class PokerAction(BaseModel):
+                    action: str
+                    amount: int
+                    reason: str
+                    notes: str
+
+        rsp = self.client.models.generate_content(model = self.model, contents = full_history,config = {
+            "response_mime_type": "application/json",
+            "response_schema": PokerAction
+        })
+        content = rsp.parsed
+        action = content.action
+        amount = content.amount
+        reason = content.reason
+        notes = content.notes
+
+        if action in ("fold", "check", "call"):
+            result = f"{action}@{reason}" if reason else action
+        elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
+            result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
+        else:
+            print('Error in structured output. Debug openai player')
+        if notes:
+            result += f"\nNOTES: {notes}"
+        return result
+
+if __name__ == "__main__":
+    player = GeminiPlayer(name="Gemini", model="gemini-2.0-flash-001")
+    print(player._chat([{"role": "user", "content": "Hello, how are you?"}]))
