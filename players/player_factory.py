@@ -7,6 +7,7 @@ from .gemini_player import GeminiPlayer
 from .anthropic_player import AnthropicPlayer
 from .all_in_player import AllInPlayer
 from .grok_player import GrokPlayer
+from .callbox_player import CallboxPlayer
 
 class PlayerFactory:
     """Factory class for creating poker players with different LLM providers."""
@@ -16,7 +17,9 @@ class PlayerFactory:
         "openai": ["gpt-4o-mini"],
         "gemini": ["gemini-pro", "gemini-pro-vision"],
         "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"],
-        "grok": ["grok-4","grok-3","grok-3-mini"]
+        "grok": ["grok-4","grok-3","grok-3-mini"],
+        "callbox": ["callbox-bot"],
+        "all-in": ["all-in-bot"]
     }
     
     @classmethod
@@ -81,6 +84,8 @@ class PlayerFactory:
             return AllInPlayer(name, model, **kwargs)
         elif provider == "grok":
             return GrokPlayer(name, model, **kwargs)
+        elif provider == "callbox":
+            return CallboxPlayer(name, model, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")

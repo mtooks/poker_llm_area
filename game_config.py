@@ -2,7 +2,7 @@
 
 # Game settings
 GAME_CONFIG = {
-    "hands": 10,           # Number of hands to play
+    "hands": 30,           # Number of hands to play
     "blinds": (50, 100),   # Small blind, big blind
     "initial_stack": 10000,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
@@ -18,11 +18,11 @@ PLAYER_CONFIGS = [
         "provider": "openai", 
         "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
     },
-    {
-        "name": "Grok",
-        "provider": "grok",
-        "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
-    },
+    # {
+    #     "name": "Grok",
+    #     "provider": "grok",
+    #     "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    # },
     # {
     #     "name": "Claude",
     #     "provider": "anthropic",
@@ -37,6 +37,16 @@ PLAYER_CONFIGS = [
     #     "name": "Chamath",
     #     "provider": "all-in",
     #     "model": "all-in-bot",
+    # },
+    {
+        "name": "Callbox",
+        "provider": "callbox",
+        "model": "callbox-bot",
+    },
+    #     {
+    #     "name": "Callbox2",
+    #     "provider": "callbox",
+    #     "model": "callbox-bot",
     # }
 ]
 

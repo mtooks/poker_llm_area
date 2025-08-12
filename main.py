@@ -6,8 +6,13 @@ Do different prompts actually make a difference? i.e. does Claude play better wi
 The script is deliberately minimal: no fancy logging, retry policy, cost
 tracking or multi‑table scheduler. Those are left for you to flesh out once the
 core loop behaves.
-Add gemini
-add grok
+
+Fix how wins are counted for chop pots
+more stats (agression etc)
+how well each player does in a pto setting 
+add in additional gamemodes
+add in random players
+add handling for promtps for strutured output
 """
 
 import asyncio
