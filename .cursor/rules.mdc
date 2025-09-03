@@ -1,0 +1,27 @@
+---
+alwaysApply: true
+---
+
+# Project Goal: LLM Poker Performance Benchmarking
+
+This project is designed to **benchmark the performance of various Large Language Models (LLMs) at playing poker**. The primary objective is to evaluate and compare how different AI models approach strategic decision-making in Texas Hold'em poker.
+
+## Core Purpose
+- **Performance Comparison**: Measure win rates, profit/loss, and decision quality across different LLM providers (OpenAI, Anthropic, Google Gemini, xAI Grok, etc.)
+- **Strategic Analysis**: Evaluate how different models handle poker concepts like bluffing, value betting, position play, and opponent modeling
+- **Decision Quality Assessment**: Analyze the reasoning behind AI decisions and identify strengths/weaknesses in different models' approaches
+
+## Key Metrics for Benchmarking
+- Win rate and profit/loss over multiple hands
+- Decision time and consistency
+- Strategic adaptability (learning from opponents)
+- Quality of poker reasoning in commentary
+
+
+## Research Focus Areas
+- We want to provide each LLM with as little information as possible. Providing the play-by-play of previous hands as well as the current state is adequate. No need to provide it with different pot odds, equity ratios, etc. 
+
+When working on this codebase, prioritize features that enhance benchmarking capabilities, improve data collection for performance analysis, and enable fair comparisons between different LLM approaches to poker strategy.
+alwaysApply: true
+---
+Your goal    

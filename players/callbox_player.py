@@ -13,8 +13,9 @@ class CallboxPlayer(BasePlayer):
         model: str = "callbox-bot",
         initial_stack: int = 400,
         system_prompt: str = None,
+        enable_reflection: bool = False,
     ):
-        super().__init__(name, model, initial_stack, system_prompt)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
 
     async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
         """

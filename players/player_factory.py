@@ -38,6 +38,7 @@ class PlayerFactory:
         name: str, 
         provider: str, 
         model: Optional[str] = None, 
+        enable_reflection: bool = False,
         **kwargs
     ):
         """
@@ -75,17 +76,17 @@ class PlayerFactory:
         
         # Create appropriate player
         if provider == "openai":
-            return OpenAIPlayer(name, model, **kwargs)
+            return OpenAIPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         elif provider == "gemini":
-            return GeminiPlayer(name, model, **kwargs)
+            return GeminiPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         elif provider == "anthropic":
-            return AnthropicPlayer(name, model, **kwargs)
+            return AnthropicPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         elif provider == "all-in":
-            return AllInPlayer(name, model, **kwargs)
+            return AllInPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         elif provider == "grok":
-            return GrokPlayer(name, model, **kwargs)
+            return GrokPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         elif provider == "callbox":
-            return CallboxPlayer(name, model, **kwargs)
+            return CallboxPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")

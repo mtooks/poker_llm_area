@@ -31,8 +31,9 @@ class OpenAIPlayer(BasePlayer):
         model: str,
         initial_stack: int = 400,
         system_prompt: str = None,
+        enable_reflection: bool = False,
     ):
-        super().__init__(name, model, initial_stack, system_prompt)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
         
         # Initialize OpenAI client
         self._setup_openai_client()
@@ -96,6 +97,8 @@ class OpenAIPlayer(BasePlayer):
                 result = f"{action}@{reason}" if reason else action
             elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
                 result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
+            elif action == "reflection":
+                result =  notes
             else:
                 print('Error in structured output. Debug openai player')
             if notes:

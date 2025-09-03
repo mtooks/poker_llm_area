@@ -30,8 +30,9 @@ class GeminiPlayer(BasePlayer):
         model: str,
         initial_stack: int = 400,
         system_prompt: str = None,
+        enable_reflection: bool = False,
     ):
-        super().__init__(name, model, initial_stack, system_prompt)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
         
         # Initialize Gemini client
         self._setup_gemini_client()
@@ -83,7 +84,7 @@ class GeminiPlayer(BasePlayer):
         elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
             result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
         else:
-            print('Error in structured output. Debug openai player')
+            print('Error in structured output. Debug gemini player')
         if notes:
             result += f"\nNOTES: {notes}"
         return result

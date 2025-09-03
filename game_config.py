@@ -9,6 +9,7 @@ GAME_CONFIG = {
     "see_model_monologue": True,  # Toggle player commentary on/off
     "min_bet": 2,          # Minimum bet amount
     "ante_amount": 0,      # Ante amount per player (0 for no ante)
+    "enable_reflection": False,  # Enable hand reflection for all players
 }
 
 # Player configurations - easy to modify
@@ -17,36 +18,43 @@ PLAYER_CONFIGS = [
         "name": "SamAltman",
         "provider": "openai", 
         "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
+        "enable_reflection": True,  # Individual reflection setting
     },
     # {
     #     "name": "Grok",
     #     "provider": "grok",
     #     "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    #     "enable_reflection": False,
     # },
     # {
     #     "name": "Claude",
     #     "provider": "anthropic",
     #     "model": "claude-3-5-haiku-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    #     "enable_reflection": True,  # Example: Enable reflection for Claude
     # },
     # {
     #     "name": "sonnet",
     #     "provider": "anthropic",
     #     "model": "claude-3-7-sonnet-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    #     "enable_reflection": False,
     # },
     # {
     #     "name": "Chamath",
     #     "provider": "all-in",
     #     "model": "all-in-bot",
+    #     "enable_reflection": False,  # All-in player doesn't need reflection
     # },
     {
         "name": "Callbox",
         "provider": "callbox",
         "model": "callbox-bot",
+        "enable_reflection": False,
     },
     #     {
     #     "name": "Callbox2",
     #     "provider": "callbox",
     #     "model": "callbox-bot",
+    #     "enable_reflection": False,
     # }
 ]
 

@@ -31,8 +31,9 @@ class GrokPlayer(BasePlayer):
         model: str,
         initial_stack: int = 400,
         system_prompt: str = None,
+        enable_reflection: bool = False,
     ):
-        super().__init__(name, model, initial_stack, system_prompt)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
 
         # Initialize Grok client (OpenAI-compatible, different base_url)
         self._setup_grok_client()
@@ -125,7 +126,7 @@ class GrokPlayer(BasePlayer):
             elif action == "raise_to" and isinstance(amount, int):
                 result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
             else:
-                print('Error in structured output. Debug openai player')
+                print('Error in structured output. Debug grok player')
             if notes:
                 result += f"\nNOTES: {notes}"
             return result

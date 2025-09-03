@@ -1,11 +1,11 @@
 """Simplified poker game using the new player factory.
-TODO: Fix the Order of logging and output display.
+TODO:
+Fix memory that is being passed to each player
+Allow the player to review at the end of each hand.
+Fix the Order of logging and output display.
 Do different prompts actually make a difference? i.e. does Claude play better with a different prompt?
     If all models are given the same prompt, does win rate change?
-
-The script is deliberately minimal: no fancy logging, retry policy, cost
-tracking or multi‑table scheduler. Those are left for you to flesh out once the
-core loop behaves.
+Allow LLM's to talk to each other
 
 Fix how wins are counted for chop pots
 more stats (agression etc)
@@ -33,7 +33,7 @@ MIN_BET = GAME_CONFIG["min_bet"]
 RNG_SEED = GAME_CONFIG["rng_seed"]
 ANTE_AMOUNT = GAME_CONFIG["ante_amount"]
 SEE_MODEL_MONOLOGUE = GAME_CONFIG["see_model_monologue"]
-LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+)$")
+LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+|show|muck)$")
 
 
 class PromptAdapter:
@@ -93,8 +93,15 @@ class PromptAdapter:
                 tok = f"call"
             tokens.append(tok)
 
-        min_raise = st.min_completion_betting_or_raising_to_amount
-        tokens.append(f"raise_to: {min_raise} to {st.stacks[st.actor_index]}")
+        if st.can_complete_bet_or_raise_to(st.min_completion_betting_or_raising_to_amount):
+            min_raise = st.min_completion_betting_or_raising_to_amount
+            tokens.append(f"raise_to: {min_raise} to {st.stacks[st.actor_index]}")
+
+        # Add showdown options
+
+        if st.can_show_or_muck_hole_cards():
+            tokens.append("show")
+            tokens.append("muck")
 
         return tokens
 
@@ -106,6 +113,10 @@ class PromptAdapter:
             st.check_or_call()
         elif tok.startswith("raise_to"):
             st.complete_bet_or_raise_to(int(tok.split(":")[1].strip()))
+        elif tok == "show":
+            st.show_or_muck_hole_cards(hole_cards=st.hole_cards[st.actor_index])
+        elif tok == "muck":
+            st.show_or_muck_hole_cards(hole_cards=())
         else:
             raise ValueError(tok)
 
@@ -127,7 +138,8 @@ class GameOrchestrator:
                 name=config["name"],
                 provider=config["provider"],
                 model=config.get("model"),  # Use None to get default model
-                initial_stack=GAME_CONFIG["initial_stack"]
+                initial_stack=GAME_CONFIG["initial_stack"],
+                enable_reflection=config.get("enable_reflection", GAME_CONFIG.get("enable_reflection", False))
             )
             self.players.append(player)
         
@@ -157,7 +169,7 @@ class GameOrchestrator:
                 Automation.ANTE_POSTING,
                 Automation.BET_COLLECTION,
                 Automation.BLIND_OR_STRADDLE_POSTING,
-                Automation.HOLE_CARDS_SHOWING_OR_MUCKING,
+                # Automation.HOLE_CARDS_SHOWING_OR_MUCKING,  # Removed to enable manual show/muck decisions
                 Automation.BOARD_DEALING,
                 Automation.CARD_BURNING,
                 Automation.HOLE_DEALING,
@@ -221,20 +233,26 @@ class GameOrchestrator:
             "actions": [],
             "final_board": [],
             "dealer_position": self.dealer_position,
-            "result": {}
+            "result": {},
+            "pokerkit_operations": [],  # Store raw PokerKit operations for conversion
+            "hole_cards": {},  # Store hole cards for each player
+            "player_names": [p.name for p in self.get_players_in_position_order()]
         }
        
         # Display hole cards
         for i in st.player_indices:
             actual_player_idx = (i + self.dealer_position) % len(self.players)
+            hole_cards = list(st.hole_cards[i])
+            hand_data["hole_cards"][i] = hole_cards  # Store for later summary
             print(f"P{i}, aka {self.players[actual_player_idx].name} hole cards:", 
-                  [self.card_to_emoji(card) for card in list(st.hole_cards[i])])
+                  [self.card_to_emoji(card) for card in hole_cards])
         
         # Betting loop
         while st.status:
             plr_idx = st.actor_index
             if plr_idx is None:
-                break
+                if not st.can_show_or_muck_hole_cards():
+                    break
                 
             actual_player_idx = (plr_idx + self.dealer_position) % len(self.players)
             player_name = self.players[actual_player_idx].name
@@ -245,26 +263,24 @@ class GameOrchestrator:
             player_names = [p.name for p in players_in_position]
             game_state = PromptAdapter.visible_state(st, plr_idx, player_names)
             
-            # Get player decision
-            rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
+            # Get player decision (check if this is showdown or regular action)
+            if "show" in legal or "muck" in legal:
+                # This is a showdown decision
+                rsp = await self.players[actual_player_idx].make_showdown_decision(game_state, legal)
+            else:
+                # Regular betting decision
+                rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
             
             # Parse response
-            try:
-                rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
-                if SEE_MODEL_MONOLOGUE:
-                    print(f"{player_name}: {commentary}")
-                hand_data["actions"].append({
-                    "player": actual_player_idx,
-                    "action": rsp,
-                    "commentary": commentary
-                })
-            except ValueError:
-                rsp = rsp.strip()
-                hand_data["actions"].append({
-                    "player": actual_player_idx,
-                    "action": rsp,
-                    "commentary": ""
-                })
+            rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
+            if SEE_MODEL_MONOLOGUE:
+                print(f"{player_name}: {commentary}")
+            hand_data["actions"].append({
+                "player": actual_player_idx,
+                "action": rsp,
+                "commentary": commentary
+            })
+            
                 
             # Validate move
             if not LEGAL_TOKEN_RE.match(rsp):
@@ -275,6 +291,9 @@ class GameOrchestrator:
                 
             try:               
                 PromptAdapter.apply_token(st, rsp)
+
+                if st.can_show_or_muck_hole_cards():
+                    print("SHOWWWWWWWWWDOWNNNNNNNNN")
                 
                 # Print new developments
                 board = [str(card) for card in st.get_board_cards(0)]                
@@ -321,10 +340,13 @@ class GameOrchestrator:
         for i in range(len(st.stacks)):
             hand_data["result"][f"profit_p{i}"] = st.stacks[i] - hand_data["starting_stacks"][i]
         
-        # Update player stacks and memoryclear
+        # Store the complete PokerKit operations for human-readable conversion
+        hand_data["pokerkit_operations"] = list(st.operations)
+        
+        # Update player stacks and memory
         for idx, player in enumerate(players_in_position):
             player.update_stack(st.stacks[idx])
-            player.update_memory(hand_data)
+            await player.update_memory(hand_data)
             
         # Rotate dealer position
         self.dealer_position = (self.dealer_position + 1) % len(self.players)

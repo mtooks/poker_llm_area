@@ -20,6 +20,7 @@ class BasePlayer(ABC):
         model: str,
         initial_stack: int = 400,
         system_prompt: Optional[str] = None,
+        enable_reflection: bool = False,
     ):
         self.name = name
         self.model = model
@@ -29,6 +30,7 @@ class BasePlayer(ABC):
         self.conversation_history = []
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         self.structured_system_prompt = self._get_structured_system_prompt()
+        self.enable_reflection = enable_reflection
         
         # Add tracking for strategic decisions
         self.decision_times = []
@@ -42,6 +44,7 @@ class BasePlayer(ABC):
         
         # Add player notes - a space for the player to record observations
         self.notes = ""
+        self.reflections = []  # Store hand reflections for analysis
 
     
     def _get_structured_system_prompt(self) -> str:
@@ -72,15 +75,18 @@ class BasePlayer(ABC):
         """Send messages to the LLM provider and get response."""
         pass
 
+    
+
     async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
         """Route request to appropriate LLM provider with conversation history."""
         # Combine system message, conversation history, and current message
-
         # if strucutured output, use a different flag
 
         full_messages = [{"role": "system", "content": self.system_prompt}]
 
-        
+
+
+
         full_messages.extend(self.conversation_history)
         
         # Only add the last user message if it's not already in conversation history
@@ -154,27 +160,212 @@ class BasePlayer(ABC):
             
         return response
     
+    async def make_showdown_decision(self, game_state: Dict[str, Any], legal_actions: List[str]) -> str:
+        """Ask the LLM whether to show or muck at showdown."""
+        start_time = time.time()
+        
+        # Add showdown-specific context to game state
+        showdown_context = {
+            **game_state,
+            "situation": "showdown",
+            "decision_type": "show_or_muck",
+            "context": "Decide whether to reveal your hole cards or muck them face-down",
+            "considerations": [
+                "Showing reveals your playing style to opponents",
+                "Mucking keeps your strategy hidden", 
+                "Table image and future hands matter",
+                "Information warfare is part of poker strategy"
+            ],
+            "notes": self.notes
+        }
+        
+        prompt_json = json.dumps(
+            {
+                "state": showdown_context,
+                "legal": legal_actions,
+                "instructions": "Choose 'show' to reveal your cards or 'muck' to fold face-down. Consider your table image and information strategy.",
+            },
+            separators=(',', ':'),
+        )
+        
+        messages = [
+            {"role": "user", "content": prompt_json},
+        ]
+        
+        response = await self.ask(messages)
+        
+        # Track decision time
+        decision_time = time.time() - start_time
+        self.decision_times.append(decision_time)
+        
+        # Check if player wants to update their notes
+        lines = response.split("\n")
+        action_line = lines[0]
+        note_lines = []
+        
+        for i, line in enumerate(lines):
+            if line.startswith("NOTES:"):
+                note_lines = lines[i:]
+                break
+        
+        if note_lines:
+            # Update notes
+            self.update_notes("\n".join(note_line[6:].strip() for note_line in note_lines))
+            # Return only the action part
+            return action_line
+            
+        return response
+    
+    async def reflect_on_hand(self, hand_summary: str) -> str:
+        """Ask the LLM to reflect on a completed hand and extract lessons."""
+        if not self.enable_reflection:
+            return ""
+        
+        reflection_prompt = {
+            "hand_summary": hand_summary,
+            "current_notes": self.notes,
+            "task": "reflection",
+            "instructions": [
+                "Analyze the completed hand and your decisions",
+                "Identify what you did well and what could be improved", 
+                "Consider opponent tendencies you observed",
+                "Extract key lessons for future hands",
+                "Update your strategic understanding"
+            ],
+            "output_format": "Provide 2-3 key insights and any strategic adjustments you want to make. Be concise but specific."
+        }
+        
+        prompt_json = json.dumps(reflection_prompt, separators=(',', ':'))
+        messages = [{"role": "user", "content": prompt_json}]
+        
+        try:
+            reflection = await self.ask(messages)
+            
+            # Store the reflection for analysis
+            self.reflections.append({
+                "hand_summary": hand_summary,
+                "reflection": reflection,
+                "timestamp": len(self.hand_history)  # Use hand count as timestamp
+            })
+            
+            return reflection
+        except Exception as e:
+            print(f"Error during reflection for {self.name}: {e}")
+            return ""
+    
     def update_notes(self, new_notes: str) -> None:
         """Update the player's notes about the game."""
         if not new_notes:
             return
             
         # Append to existing notes
-        if self.notes:
-            self.notes += f"\n{new_notes}"
-        else:
-            self.notes = new_notes
+        self.notes += f"\n{new_notes}"
     
-    def update_memory(self, hand_result: Dict[str, Any]) -> None:
+    def _create_human_readable_hand_summary(self, hand_result: Dict[str, Any]) -> str:
+        """Create a concise, human-readable summary of a completed hand."""
+        from utils.action_converter import ActionConverter
+        
+        hand_id = hand_result['hand_id']
+        player_names = hand_result.get('player_names', [])
+        
+        # Find this player's position in the hand
+        dealer_pos = hand_result.get('dealer_position', 0)
+        my_position = None
+        my_hole_cards = None
+        my_profit = 0
+        
+        # Determine player's position and cards
+        for i, name in enumerate(player_names):
+            if name == self.name:
+                my_position = i
+                my_hole_cards = hand_result.get('hole_cards', {}).get(i, [])
+                my_profit = hand_result['result'].get(f'profit_p{i}', 0)
+                break
+        
+        # Start building summary
+        summary = f"Hand #{hand_id}: "
+        
+        # Add hole cards if available
+        if my_hole_cards:
+            cards_str = ', '.join(str(card) for card in my_hole_cards)
+            summary += f"Dealt {cards_str}. "
+        
+        # Convert PokerKit operations to human-readable actions
+        if 'pokerkit_operations' in hand_result:
+            actions = []
+            board_cards_dealt = 0  # Track how many board cards have been dealt
+            
+            for op in hand_result['pokerkit_operations']:
+                readable = ActionConverter.to_human_readable(op, player_names)
+                if readable and readable.strip():  # Only include non-empty actions
+                    
+                    # Skip redundant hole card dealing messages
+                    if "dealt hole cards" in readable.lower():
+                        continue
+                    
+                    # Replace "Board dealt" with proper street names
+                    if readable.startswith("Board dealt:"):
+                        cards_in_this_deal = len(readable.split(", ")) - 1  # Subtract 1 for "Board dealt:"
+                        if board_cards_dealt == 0:
+                            # First board dealing is always the flop (3 cards)
+                            readable = readable.replace("Board dealt:", "Flop:")
+                            board_cards_dealt += 3
+                        elif board_cards_dealt == 3:
+                            # Second board dealing is the turn (1 card)
+                            readable = readable.replace("Board dealt:", "Turn:")
+                            board_cards_dealt += 1
+                        elif board_cards_dealt == 4:
+                            # Third board dealing is the river (1 card)
+                            readable = readable.replace("Board dealt:", "River:")
+                            board_cards_dealt += 1
+                    
+                    actions.append(readable + ".")
+            
+            if actions:
+                # Filter out some noise (like card burning, bet collection, chips operations)
+                filtered_actions = [action for action in actions if not any(x in action.lower() for x in [
+                    'card burned', 'chips pushed', 'chips pulled'
+                ])]
+                if filtered_actions:
+                    summary += " ".join(filtered_actions) + ". "
+        
+        # Add final board if available
+        if hand_result.get('final_board'):
+            board_str = ', '.join(str(card) for card in hand_result['final_board'])
+            summary += f"Final board: {board_str}. "
+        
+        # Add outcome
+        if my_profit > 0:
+            summary += f"Won {my_profit} chips."
+        elif my_profit < 0:
+            summary += f"Lost {abs(my_profit)} chips."
+        else:
+            summary += "Broke even."
+        
+        return summary
+       
+    
+    async def update_memory(self, hand_result: Dict[str, Any]) -> None:
         """Store hand result in player's memory and update statistics."""
         self.hand_history.append(hand_result)
         
-        # Add hand summary to conversation history for context in future hands
-        summary = f"Hand #{hand_result['hand_id']} summary: "
-        summary += f"Starting stack {hand_result['starting_stacks'][0] if self.name == 'P0' else hand_result['starting_stacks'][1]}, "
-        summary += f"Ending stack {hand_result['result']['final_stacks'][0] if self.name == 'P0' else hand_result['result']['final_stacks'][1]}, "
-        summary += f"Profit {hand_result['result']['profit_p0'] if self.name == 'P0' else hand_result['result']['profit_p1']}"
+        # Create human-readable hand summary using ActionConverter
+        summary = self._create_human_readable_hand_summary(hand_result)
         
+        # Optional reflection on the completed hand
+        if self.enable_reflection:
+            try:
+                reflection = await self.reflect_on_hand(summary)
+                if reflection:
+                    # Add reflection to conversation history as assistant message
+                    self.conversation_history.append({
+                        "role": "assistant", 
+                        "content": f"Hand reflection: {reflection}"
+                    })
+            except Exception as e:
+                print(f"Could not run reflection for {self.name}: {e}")
+        
+        #Todo: see if this is best way to add hand summaries and pass context
         self.conversation_history.append({"role": "user", "content": summary})
         
         # Add a reminder about notes to the conversation history for future hands
