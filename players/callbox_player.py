@@ -75,3 +75,11 @@ class CallboxPlayer(BasePlayer):
         response = self._generate_call_response(game_state)
         
         return response 
+
+    async def make_showdown_decision(self, game_state: Dict[str, Any], legal_actions: List[str]) -> str:
+        """
+        Override make_showdown_decision to always show cards.
+        This bypasses the LLM communication entirely.
+        """
+        # Always show cards at showdown
+        return "show@Always showing cards at showdown"

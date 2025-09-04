@@ -98,7 +98,9 @@ class OpenAIPlayer(BasePlayer):
             elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
                 result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
             elif action == "reflection":
-                result =  notes
+                result =  notes + "@"
+            elif action in ("show", "muck"):
+                result = action + "@"
             else:
                 print('Error in structured output. Debug openai player')
             if notes:

@@ -14,7 +14,7 @@ class PlayerFactory:
     
     # Supported models for each provider
     SUPPORTED_MODELS = {
-        "openai": ["gpt-4o-mini"],
+        "openai": ["gpt-4o-mini",'gpt-5-mini'],
         "gemini": ["gemini-pro", "gemini-pro-vision"],
         "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"],
         "grok": ["grok-4","grok-3","grok-3-mini"],

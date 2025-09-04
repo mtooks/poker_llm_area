@@ -74,6 +74,13 @@ class ActionConverter:
             
         elif action_type in ['CardBurning', 'MockCardBurning']:
             return "Card burned"
+            
+        elif action_type in ['HoleCardsShowingOrMucking', 'MockHoleCardsShowingOrMucking']:
+            if hasattr(action, 'hole_cards') and action.hole_cards:
+                cards_str = ', '.join(str(card) for card in action.hole_cards)
+                return f"{get_player_name(action.player_index)} shows: {cards_str}"
+            else:
+                return f"{get_player_name(action.player_index)} mucks hand"
 
         # You can ignore these actions
         elif action_type in ['BetCollection']:

@@ -13,6 +13,10 @@ how well each player does in a pto setting
 add in additional gamemodes
 add in random players
 add handling for promtps for strutured output
+
+#CURRENT PROGRESS:
+- Fixed memory that is being passed to each player
+- fix showdown 
 """
 
 import asyncio
@@ -46,6 +50,10 @@ class PromptAdapter:
 
         def action_str(op):
             return ActionConverter.to_human_readable(op, player_names)
+
+        # Safety check for player index
+        if player is None:
+            raise ValueError("Player index cannot be None in visible_state")
 
         street_map = {0: "Pre flop", 1: "Flop", 2: "Turn", 3: "River"}
         street_name = street_map.get(st.street_index, "Unknown")
@@ -95,7 +103,9 @@ class PromptAdapter:
 
         if st.can_complete_bet_or_raise_to(st.min_completion_betting_or_raising_to_amount):
             min_raise = st.min_completion_betting_or_raising_to_amount
-            tokens.append(f"raise_to: {min_raise} to {st.stacks[st.actor_index]}")
+            # Only include raise option if we have a valid actor_index
+            if st.actor_index is not None:
+                tokens.append(f"raise_to: {min_raise} to {st.stacks[st.actor_index]}")
 
         # Add showdown options
 
@@ -114,9 +124,13 @@ class PromptAdapter:
         elif tok.startswith("raise_to"):
             st.complete_bet_or_raise_to(int(tok.split(":")[1].strip()))
         elif tok == "show":
-            st.show_or_muck_hole_cards(hole_cards=st.hole_cards[st.actor_index])
+            # Use showdown_index if actor_index is None (showdown phase)
+            player_idx = st.actor_index if st.actor_index is not None else st.showdown_index
+            st.show_or_muck_hole_cards(True, player_idx)
         elif tok == "muck":
-            st.show_or_muck_hole_cards(hole_cards=())
+            # Use showdown_index if actor_index is None (showdown phase)
+            player_idx = st.actor_index if st.actor_index is not None else st.showdown_index
+            st.show_or_muck_hole_cards(False, player_idx)
         else:
             raise ValueError(tok)
 
@@ -251,7 +265,10 @@ class GameOrchestrator:
         while st.status:
             plr_idx = st.actor_index
             if plr_idx is None:
-                if not st.can_show_or_muck_hole_cards():
+                # Check if we're in showdown phase
+                if st.can_show_or_muck_hole_cards():
+                    plr_idx = st.showdown_index
+                else:
                     break
                 
             actual_player_idx = (plr_idx + self.dealer_position) % len(self.players)
@@ -325,7 +342,12 @@ class GameOrchestrator:
 
             except Exception as e:
                 print(f"Error in hand {hand_no}: {e}")
-                st.fold()
+                # Don't try to fold if there's no player to act
+                if st.actor_index is not None or st.showdown_index is not None:
+                    try:
+                        st.fold()
+                    except:
+                        pass
 
         # Showdown & settle pots
         players_in_position = self.get_players_in_position_order()
@@ -401,4 +423,6 @@ async def main():
     await game.run()
 
 if __name__ == "__main__":
+    import warnings
+    warnings.filterwarnings("ignore")
     asyncio.run(main()) 
