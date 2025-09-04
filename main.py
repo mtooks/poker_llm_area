@@ -17,6 +17,8 @@ add handling for promtps for strutured output
 #CURRENT PROGRESS:
 - Fixed memory that is being passed to each player
 - fix showdown 
+- verify that game memory is actually correct.
+honestly just turn off notes and memory for now
 """
 
 import asyncio

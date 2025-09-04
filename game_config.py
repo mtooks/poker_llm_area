@@ -17,7 +17,7 @@ PLAYER_CONFIGS = [
     {
         "name": "SamAltman",
         "provider": "openai", 
-        "model": "gpt-5-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
+        "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
         "enable_reflection": True,  # Individual reflection setting
     },
     # {

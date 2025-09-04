@@ -101,6 +101,8 @@ class OpenAIPlayer(BasePlayer):
                 result =  notes + "@"
             elif action in ("show", "muck"):
                 result = action + "@"
+                if action == 'show':
+                    print("HOOOOOOOLLYYYYYY HE SHOWEEEEDDDD THE BLUFFFFF")
             else:
                 print('Error in structured output. Debug openai player')
             if notes:

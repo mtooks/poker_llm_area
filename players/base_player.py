@@ -45,6 +45,12 @@ class BasePlayer(ABC):
         # Add player notes - a space for the player to record observations
         self.notes = ""
         self.reflections = []  # Store hand reflections for analysis
+        
+        # Track current hand for memory management
+        self.current_hand_id = None
+        
+        # Store detailed hand summaries for memory
+        self.hand_summaries = []
 
     
     def _get_structured_system_prompt(self) -> str:
@@ -55,6 +61,7 @@ class BasePlayer(ABC):
         have a bad hand, think about what you could represent to your opponents. If you have a good hand, think about how to extract the maxmium value from your opponents.        
         You can maintain notes about your observations of the game. These notes will be shown to you in each decision to help you adapt your strategy over time. Add useful information about your opponent's tendencies, your own statistics, and reminders of effective strategies.
         Output your action in the given structured format. Return an action from the ones provided, and the amount if raising, as well as your reasoning and notes if you want to take them.
+        You will also be passed a a history of previous games with the actiona taken by previous players. Use this in your decision making.
 
        """
 
@@ -65,7 +72,7 @@ class BasePlayer(ABC):
         cards you have, which ones your opponents have, and what you could represent. Given this, then decide whether or not it is a good time to bluff. When you 
         have a bad hand, think about what you could represent to your opponents. If you have a good hand, think about how to extract the maxmium value from your opponents.        
         Response format:Output must be: <action>[optional integer]@<brief reason>. No other characters, no markdown. If you're raising, the optional integer range will be provided to you in the legal tokens. Explain your thinking but separate it from the token with a preceding '@' symbol
-        
+        You will also be passed a a history of previous games with the actiona taken by previous players. Use this in your decision making.
         You can maintain notes about your observations of the game. These notes will be shown to you in each decision to help you adapt your strategy over time. Add useful information about your opponent's tendencies, your own statistics, and reminders of effective strategies.
         """
 
@@ -78,23 +85,28 @@ class BasePlayer(ABC):
     
 
     async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
-        """Route request to appropriate LLM provider with conversation history."""
-        # Combine system message, conversation history, and current message
-        # if strucutured output, use a different flag
-
+        """Route request to appropriate LLM provider with intelligent memory management."""
+        # Start with system prompt
         full_messages = [{"role": "system", "content": self.system_prompt}]
 
+        # Add summarized memory from previous hands
+        if self.hand_history:
+            memory_summary = self._create_memory_summary()
+            if memory_summary:
+                full_messages.append({
+                    "role": "user", 
+                    "content": f"Previous hands summary:\n{memory_summary}"
+                })
 
-
-
-        full_messages.extend(self.conversation_history)
+        # Add current hand conversation history (detailed)
+        current_hand_messages = self._get_current_hand_messages()
+        full_messages.extend(current_hand_messages)
         
-        # Only add the last user message if it's not already in conversation history
+        # Add the current message if it's not already in conversation history
         if messages and messages[-1]["role"] == "user" and (not self.conversation_history or 
                                                           messages[-1] != self.conversation_history[-1]):
             full_messages.append(messages[-1])
         
-
         response = await self._chat(full_messages)
         
         # Update conversation history with user's message and AI's response
@@ -349,8 +361,18 @@ class BasePlayer(ABC):
         """Store hand result in player's memory and update statistics."""
         self.hand_history.append(hand_result)
         
+        # Set current hand ID for memory management
+        self.current_hand_id = hand_result.get('hand_id')
+        
         # Create human-readable hand summary using ActionConverter
         summary = self._create_human_readable_hand_summary(hand_result)
+        
+        # Store detailed hand summary for memory
+        self.hand_summaries.append(summary)
+        
+        # Keep only the last 5 detailed summaries to avoid overwhelming context
+        if len(self.hand_summaries) > 5:
+            self.hand_summaries = self.hand_summaries[-5:]
         
         # Optional reflection on the completed hand
         if self.enable_reflection:
@@ -365,15 +387,8 @@ class BasePlayer(ABC):
             except Exception as e:
                 print(f"Could not run reflection for {self.name}: {e}")
         
-        #Todo: see if this is best way to add hand summaries and pass context
-        self.conversation_history.append({"role": "user", "content": summary})
-        
-        # Add a reminder about notes to the conversation history for future hands
-        if self.notes:
-            self.conversation_history.append({
-                "role": "user", 
-                "content": f"Your current notes:\n{self.notes}"
-            })
+        # Clear conversation history for the next hand (keep only reflections and notes)
+        self._clear_conversation_for_new_hand()
         
         # Additional tracking for strategic patterns
         for action in hand_result["actions"]:
@@ -412,6 +427,55 @@ class BasePlayer(ABC):
                 new_history.append(msg)
         self.conversation_history = new_history
     
+    def _clear_conversation_for_new_hand(self):
+        """Clear conversation history for the next hand, keeping only reflections and notes."""
+        # Keep only reflections and notes for the next hand
+        new_history = []
+        for msg in self.conversation_history:
+            # Keep reflections
+            if msg["role"] == "assistant" and "Hand reflection:" in msg["content"]:
+                new_history.append(msg)
+            # Keep notes reminders
+            elif msg["role"] == "user" and "Your current notes:" in msg["content"]:
+                new_history.append(msg)
+        
+        self.conversation_history = new_history
+    
     def update_stack(self, new_stack: int) -> None:
         """Update player's stack size."""
-        self.stack = new_stack 
+        self.stack = new_stack
+    
+    def _create_memory_summary(self) -> str:
+        """Create a detailed summary of previous hands for context."""
+        if not self.hand_summaries:
+            return ""
+        
+        # Add overall performance stats
+        total_wins = sum(1 for hand in self.hand_history if hand["result"].get(f"profit_p{self.player_index}", 0) > 0)
+        win_rate = (total_wins / len(self.hand_history)) * 100 if self.hand_history else 0
+        
+        # Combine detailed hand summaries
+        detailed_summaries = "\n".join(self.hand_summaries)
+        
+        summary = f"Previous hands summary:\n{detailed_summaries}\n\nOverall win rate: {win_rate:.1f}%"
+        
+        # Add strategic notes if available
+        if self.notes:
+            summary += f"\nYour notes: {self.notes}"
+        
+        return summary
+    
+    def _get_current_hand_messages(self) -> List[Dict[str, str]]:
+        """Get conversation messages for the current hand only."""
+        if not self.conversation_history:
+            return []
+        
+        current_hand_messages = []
+        for msg in self.conversation_history:
+            # Include all messages that don't contain hand summaries
+            if msg["role"] == "user" and "Hand #" in msg["content"]:
+                # Skip hand summary messages (they're handled by memory summary)
+                continue
+            current_hand_messages.append(msg)
+        
+        return current_hand_messages 
