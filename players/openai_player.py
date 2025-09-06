@@ -32,8 +32,9 @@ class OpenAIPlayer(BasePlayer):
         initial_stack: int = 400,
         system_prompt: str = None,
         enable_reflection: bool = False,
+        use_structured_output: bool = True,  # Default to True for OpenAI
     ):
-        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection, use_structured_output)
         
         # Initialize OpenAI client
         self._setup_openai_client()
@@ -57,9 +58,15 @@ class OpenAIPlayer(BasePlayer):
         
         self.client = openai.AsyncOpenAI(api_key=openai_key)
 
-    async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
-        """Send messages to OpenAI API and get response with structured output when possible."""
-        # Prefer structured output to reduce parsing errors
+    async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
+        """Send messages to OpenAI API and get response with optional structured output."""
+        if structured_output:
+            return await self._chat_structured(messages)
+        else:
+            return await self._chat_vanilla(messages)
+    
+    async def _chat_structured(self, messages: Sequence[Dict[str, str]]) -> str:
+        """Send messages to OpenAI API with structured output."""
         class PokerAction(BaseModel):
             action: str
             amount: int
@@ -68,23 +75,16 @@ class OpenAIPlayer(BasePlayer):
 
         try:
             rsp = await self.client.responses.parse(
-                model = self.model,
-                input = messages,
-                text_format = PokerAction
+                model=self.model,
+                input=messages,
+                text_format=PokerAction
             )
 
             content = rsp.output_parsed
 
         except Exception:
-            print('Openai Structured output failed!')
-            # Fallback: no structured output
-            rsp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=400,
-            )
-            return rsp.choices[0].message.content.strip()
+            print('OpenAI Structured output failed! Falling back to vanilla.')
+            return await self._chat_vanilla(messages)
 
         # Try to convert structured JSON into required string format
         try:
@@ -98,9 +98,9 @@ class OpenAIPlayer(BasePlayer):
             elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
                 result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
             elif action == "reflection":
-                result =  notes + "@"
+                result = notes + "@"
             elif action in ("show", "muck"):
-                result = action + "@"
+                result = action + "@" + notes
                 if action == 'show':
                     print("HOOOOOOOLLYYYYYY HE SHOWEEEEDDDD THE BLUFFFFF")
             else:
@@ -111,3 +111,13 @@ class OpenAIPlayer(BasePlayer):
         except Exception:
             # If JSON parsing fails, return raw content
             return content.strip() if isinstance(content, str) else str(content)
+    
+    async def _chat_vanilla(self, messages: Sequence[Dict[str, str]]) -> str:
+        """Send messages to OpenAI API with vanilla string output."""
+        rsp = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=400,
+        )
+        return rsp.choices[0].message.content.strip()

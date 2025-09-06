@@ -39,6 +39,7 @@ class PlayerFactory:
         provider: str, 
         model: Optional[str] = None, 
         enable_reflection: bool = False,
+        use_structured_output: bool = None,
         **kwargs
     ):
         """
@@ -48,6 +49,8 @@ class PlayerFactory:
             name: Player name
             provider: LLM provider ("openai", "gemini", "anthropic")
             model: Specific model to use (optional, uses default if not specified)
+            enable_reflection: Whether to enable hand reflection
+            use_structured_output: Whether to use structured output (None = provider default)
             **kwargs: Additional arguments passed to player constructor
             
         Returns:
@@ -76,17 +79,17 @@ class PlayerFactory:
         
         # Create appropriate player
         if provider == "openai":
-            return OpenAIPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+            return OpenAIPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "gemini":
-            return GeminiPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+            return GeminiPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "anthropic":
-            return AnthropicPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+            return AnthropicPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "all-in":
-            return AllInPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+            return AllInPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "grok":
-            return GrokPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+            return GrokPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "callbox":
-            return CallboxPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+            return CallboxPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")

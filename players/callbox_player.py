@@ -14,13 +14,15 @@ class CallboxPlayer(BasePlayer):
         initial_stack: int = 400,
         system_prompt: str = None,
         enable_reflection: bool = False,
+        use_structured_output: bool = False,  # Callbox doesn't need structured output
     ):
-        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection, use_structured_output)
 
-    async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
+    async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
         """
         Override the chat method to always return call action.
         This method is called by the base class but we don't actually need LLM communication.
+        The structured_output parameter is ignored since Callbox doesn't use LLM.
         """
         # Extract the game state from the last user message
         game_state = self._extract_game_state(messages)

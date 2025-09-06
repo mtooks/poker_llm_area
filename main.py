@@ -18,6 +18,10 @@ add handling for promtps for strutured output
 - Fixed memory that is being passed to each player
 - fix showdown 
 - verify that game memory is actually correct.
+- Game state has incorrect palyer stacks
+- remove card burning and hole card dealing
+- check to see if turns are called correctly
+- reasoning and notes are basically the same thing, so consolidate
 honestly just turn off notes and memory for now
 """
 
@@ -155,7 +159,8 @@ class GameOrchestrator:
                 provider=config["provider"],
                 model=config.get("model"),  # Use None to get default model
                 initial_stack=GAME_CONFIG["initial_stack"],
-                enable_reflection=config.get("enable_reflection", GAME_CONFIG.get("enable_reflection", False))
+                enable_reflection=config.get("enable_reflection", GAME_CONFIG.get("enable_reflection", False)),
+                use_structured_output=config.get("use_structured_output")  # Use config value or None for provider default
             )
             self.players.append(player)
         
@@ -193,6 +198,7 @@ class GameOrchestrator:
                 Automation.CARD_BURNING,
                 Automation.CHIPS_PUSHING,
                 Automation.CHIPS_PULLING,
+                Automation.RUNOUT_COUNT_SELECTION,  # Added to handle all-in runout
             ),
             False,       # ante_trimming_status
             raw_antes,   # raw_antes - now from config
@@ -271,6 +277,8 @@ class GameOrchestrator:
                 if st.can_show_or_muck_hole_cards():
                     plr_idx = st.showdown_index
                 else:
+                    # No player to act - let PokerKit handle automation (like runout)
+                    # Break the loop to let automation run
                     break
                 
             actual_player_idx = (plr_idx + self.dealer_position) % len(self.players)
@@ -291,7 +299,11 @@ class GameOrchestrator:
                 rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
             
             # Parse response
-            rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
+            if '@' in rsp:
+                rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
+            else:
+                # If no @ separator, treat entire response as action with default commentary
+                commentary = "No commentary provided"
             if SEE_MODEL_MONOLOGUE:
                 print(f"{player_name}: {commentary}")
             hand_data["actions"].append({
@@ -338,23 +350,33 @@ class GameOrchestrator:
                     hand_data["final_board"] = board.copy()
 
                 last_history_len = len(st.operations)
-                    
-                # Print stack changes only at the end of the hand
-                # (Remove the stack printing here - it will be shown at the end of the hand)
+                        
+                    # Print stack changes only at the end of the hand
+                    # (Remove the stack printing here - it will be shown at the end of the hand)
 
             except Exception as e:
                 print(f"Error in hand {hand_no}: {e}")
                 # Don't try to fold if there's no player to act
                 if st.actor_index is not None or st.showdown_index is not None:
                     try:
+                        if st.all_in_status:
+                            for i in st.showdown_indices:
+                                st.show_or_muck_hole_cards(True, i)
                         st.fold()
+                        
                     except:
                         pass
+
+                    
+        
+
 
         # Showdown & settle pots
         players_in_position = self.get_players_in_position_order()
         result_str = " | ".join([f"{players_in_position[i].name}={st.stacks[i]}" for i in range(len(st.stacks))])
         print(f"Hand {hand_no} result → stacks: {result_str}")
+        
+      
         
         # Update hand result data
         hand_data["result"] = {

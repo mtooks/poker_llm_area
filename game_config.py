@@ -14,12 +14,13 @@ GAME_CONFIG = {
 
 # Player configurations - easy to modify
 PLAYER_CONFIGS = [
-    {
-        "name": "SamAltman",
-        "provider": "openai", 
-        "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
-        "enable_reflection": True,  # Individual reflection setting
-    },
+    # {
+    #     "name": "SamAltman",
+    #     "provider": "openai", 
+    #     "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
+    #     "enable_reflection": True,  # Individual reflection setting
+    #     "use_structured_output": True,  # Use structured output for OpenAI
+    # },
     # {
     #     "name": "Grok",
     #     "provider": "grok",
@@ -49,13 +50,14 @@ PLAYER_CONFIGS = [
         "provider": "callbox",
         "model": "callbox-bot",
         "enable_reflection": False,
+        "use_structured_output": False,  # Callbox doesn't need structured output
     },
-    #     {
-    #     "name": "Callbox2",
-    #     "provider": "callbox",
-    #     "model": "callbox-bot",
-    #     "enable_reflection": False,
-    # }
+        {
+        "name": "all_in",
+        "provider": "all-in",
+        "model": "all-in-bot",
+        "enable_reflection": False,
+    }
 ]
 
 # Alternative configurations you can use:

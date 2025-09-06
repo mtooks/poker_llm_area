@@ -86,6 +86,10 @@ class ActionConverter:
         elif action_type in ['BetCollection']:
             return ""
             
+        elif action_type in ['RunoutCountSelection', 'MockRunoutCountSelection']:
+            # This happens during all-in runout - we can ignore it as it's automatic
+            return ""
+            
         else:
             # Fallback for unknown action types
             print(f"ERROR RENDERING ACTION: {action_type}")

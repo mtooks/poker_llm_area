@@ -21,6 +21,7 @@ class BasePlayer(ABC):
         initial_stack: int = 400,
         system_prompt: Optional[str] = None,
         enable_reflection: bool = False,
+        use_structured_output: bool = False,
     ):
         self.name = name
         self.model = model
@@ -51,6 +52,9 @@ class BasePlayer(ABC):
         
         # Store detailed hand summaries for memory
         self.hand_summaries = []
+        
+        # Structured output preference
+        self.use_structured_output = use_structured_output
 
     
     def _get_structured_system_prompt(self) -> str:
@@ -78,14 +82,18 @@ class BasePlayer(ABC):
 
 
     @abstractmethod
-    async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
+    async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
         """Send messages to the LLM provider and get response."""
         pass
 
     
 
-    async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
+    async def ask(self, messages: Sequence[Dict[str, str]], structured_output: bool = None) -> str:
         """Route request to appropriate LLM provider with intelligent memory management."""
+        # Determine structured output preference
+        if structured_output is None:
+            structured_output = getattr(self, 'use_structured_output', False)
+        
         # Start with system prompt
         full_messages = [{"role": "system", "content": self.system_prompt}]
 
@@ -106,8 +114,8 @@ class BasePlayer(ABC):
         if messages and messages[-1]["role"] == "user" and (not self.conversation_history or 
                                                           messages[-1] != self.conversation_history[-1]):
             full_messages.append(messages[-1])
-        
-        response = await self._chat(full_messages)
+
+        response = await self._chat(full_messages, structured_output=structured_output)
         
         # Update conversation history with user's message and AI's response
         if messages and messages[-1]["role"] == "user" and (not self.conversation_history or 
