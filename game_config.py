@@ -6,7 +6,7 @@ GAME_CONFIG = {
     "blinds": (50, 100),   # Small blind, big blind
     "initial_stack": 10000,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
-    "see_model_monologue": True,  # Toggle player commentary on/off
+    "see_model_monologue": False,  # Toggle player commentary on/off
     "min_bet": 2,          # Minimum bet amount
     "ante_amount": 0,      # Ante amount per player (0 for no ante)
     "enable_reflection": False,  # Enable hand reflection for all players
@@ -21,12 +21,13 @@ PLAYER_CONFIGS = [
     #     "enable_reflection": True,  # Individual reflection setting
     #     "use_structured_output": True,  # Use structured output for OpenAI
     # },
-    # {
-    #     "name": "Grok",
-    #     "provider": "grok",
-    #     "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
-    #     "enable_reflection": False,
-    # },
+    {
+        "name": "Grok",
+        "provider": "grok",
+        "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+        "enable_reflection": False,
+        "use_structured_output": True
+    },
     # {
     #     "name": "Claude",
     #     "provider": "anthropic",
@@ -52,12 +53,12 @@ PLAYER_CONFIGS = [
         "enable_reflection": False,
         "use_structured_output": False,  # Callbox doesn't need structured output
     },
-        {
-        "name": "all_in",
-        "provider": "all-in",
-        "model": "all-in-bot",
-        "enable_reflection": False,
-    }
+    #     {
+    #     "name": "all_in",
+    #     "provider": "all-in",
+    #     "model": "all-in-bot",
+    #     "enable_reflection": False,
+    # }
 ]
 
 # Alternative configurations you can use:

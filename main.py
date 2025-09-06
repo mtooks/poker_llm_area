@@ -29,7 +29,7 @@ import asyncio
 import json
 import random
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
 from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling

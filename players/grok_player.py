@@ -32,8 +32,9 @@ class GrokPlayer(BasePlayer):
         initial_stack: int = 400,
         system_prompt: str = None,
         enable_reflection: bool = False,
+        use_structured_output: bool = True,  # Default to True for Grok
     ):
-        super().__init__(name, model, initial_stack, system_prompt, enable_reflection)
+        super().__init__(name, model, initial_stack, system_prompt, enable_reflection, use_structured_output)
 
         # Initialize Grok client (OpenAI-compatible, different base_url)
         self._setup_grok_client()
@@ -76,7 +77,7 @@ class GrokPlayer(BasePlayer):
                                                           messages[-1] != self.conversation_history[-1]):
             full_messages.append(messages[-1])
         
-        response = await self._chat(full_messages)
+        response = await self._chat(full_messages,structured_output=True)
         if messages and messages[-1]["role"] == "user" and (not self.conversation_history or 
                                                           messages[-1] != self.conversation_history[-1]):
             self.conversation_history.append(messages[-1])
@@ -84,35 +85,33 @@ class GrokPlayer(BasePlayer):
         
         return response
 
-    async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
+    async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
+        """Send messages to Grok API and get response with optional structured output."""
+        if structured_output:
+            return await self._chat_structured(messages)
+        else:
+            return await self._chat_vanilla(messages)
+    
+    async def _chat_structured(self, messages: Sequence[Dict[str, str]]) -> str:
+        """Send messages to Grok API with structured output."""
         class PokerAction(BaseModel):
             action: str
             amount: int
             reason: str
             notes: str
 
-        messages[1]['content']
-
         try:
-            
             rsp = self.client.beta.chat.completions.parse(
-                model = self.model,
-                messages = messages,
-                response_format = PokerAction
+                model=self.model,
+                messages=messages,
+                response_format=PokerAction
             )
 
             content = rsp.choices[0].message.parsed
 
         except Exception:
-            print('Grok Structured output failed!')
-            # Fallback: no structured output
-            rsp = await self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=400,
-            )
-            return rsp.choices[0].message.content.strip()
+            print('Grok Structured output failed! Falling back to vanilla.')
+            return await self._chat_vanilla(messages)
 
         # Try to convert structured JSON into required string format
         try:
@@ -123,8 +122,12 @@ class GrokPlayer(BasePlayer):
 
             if action in ("fold", "check", "call"):
                 result = f"{action}@{reason}" if reason else action
-            elif action == "raise_to" and isinstance(amount, int):
+            elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
                 result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
+            elif action == "reflection":
+                result = notes + "@"
+            elif action in ("show", "muck"):
+                result = action + "@" + notes
             else:
                 print('Error in structured output. Debug grok player')
             if notes:
@@ -133,3 +136,13 @@ class GrokPlayer(BasePlayer):
         except Exception:
             # If JSON parsing fails, return raw content
             return content.strip() if isinstance(content, str) else str(content)
+    
+    async def _chat_vanilla(self, messages: Sequence[Dict[str, str]]) -> str:
+        """Send messages to Grok API with vanilla string output."""
+        rsp = await self.client.chat.completions.create(
+            model=self.model,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=400,
+        )
+        return rsp.choices[0].message.content.strip()
