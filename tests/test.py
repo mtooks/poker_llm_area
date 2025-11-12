@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
 import random
 import re
 from dataclasses import dataclass
@@ -29,10 +28,12 @@ from typing import Any, Dict, List, Sequence
 from pathlib import Path
 
 # Remove dotenv loading since Player handles API keys internally
-from pokerkit import Automation, Mode, NoLimitTexasHoldem
 from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling
 
+from pokerkit import Automation, Mode, NoLimitTexasHoldem
+
 from player import Player  # Import the new Player class
+from utils.env_loader import get_env_value
 
 ############################################################
 # ───────────────────  CONFIG  ─────────────────────────────
@@ -42,9 +43,9 @@ OPENAI_MODEL = "gpt-4o-mini"      # cheap; swap to gpt-4o for stronger play
 GEMINI_MODEL = "gemini-1.5-flash"
 ANTHROPIC_MODEL = "claude-3-5-haiku-latest"
 
-# Load API keys from environment variables
-GEMINI_KEY = os.getenv("GEMINI_KEY", "")
-OPENAI_KEY = os.getenv("OPENAI_KEY", "")
+# Load API keys directly from the .env file
+GEMINI_KEY = get_env_value("GEMINI_KEY", "")
+OPENAI_KEY = get_env_value("OPENAI_KEY", "")
 
 BLINDS = (50, 100)  # SB, BB
 MIN_BET = BLINDS[1]
@@ -502,4 +503,3 @@ if __name__ == "__main__":
     hands_to_play = 20
     orch = Orchestrator(hands=hands_to_play)
     asyncio.run(orch.run())
-

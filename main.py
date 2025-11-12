@@ -6,6 +6,7 @@ Fix the Order of logging and output display.
 Do different prompts actually make a difference? i.e. does Claude play better with a different prompt?
     If all models are given the same prompt, does win rate change?
 Allow LLM's to talk to each other
+Have legal_tokens() emit structured options and render text in one place
 
 Fix how wins are counted for chop pots
 more stats (agression etc)
@@ -22,15 +23,14 @@ honestly just turn off notes and memory for now
 """
 
 import asyncio
-import json
 import random
-import re
 from typing import Any, Dict, List
 
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
 from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling
 from players.player_factory import PlayerFactory
 from utils.action_converter import ActionConverter
+from utils.action_parser import InvalidActionError, parse_player_decision, select_fallback_token
 from game_config import GAME_CONFIG, PLAYER_CONFIGS
 
 # Game configuration - all values now read from GAME_CONFIG
@@ -39,9 +39,6 @@ MIN_BET = GAME_CONFIG["min_bet"]
 RNG_SEED = GAME_CONFIG["rng_seed"]
 ANTE_AMOUNT = GAME_CONFIG["ante_amount"]
 SEE_MODEL_MONOLOGUE = GAME_CONFIG["see_model_monologue"]
-LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+|show|muck)$")
-
-
 class PromptAdapter:
     """Helpers for state → prompt and token → state transition."""
     
@@ -149,7 +146,7 @@ class GameOrchestrator:
         
         # Create players using the factory
         self.players = []
-        for config in PLAYER_CONFIGS:
+        for idx, config in enumerate(PLAYER_CONFIGS):
             player = PlayerFactory.create_player(
                 name=config["name"],
                 provider=config["provider"],
@@ -157,6 +154,7 @@ class GameOrchestrator:
                 initial_stack=GAME_CONFIG["initial_stack"],
                 enable_reflection=config.get("enable_reflection", GAME_CONFIG.get("enable_reflection", False))
             )
+            player.player_index = idx
             self.players.append(player)
         
         self.dealer_position = 0
@@ -234,6 +232,7 @@ class GameOrchestrator:
         
         # Get players in position order for this hand
         players_in_position = self.get_players_in_position_order()
+        player_names = [p.name for p in players_in_position]
         if len(players_in_position) == 2:
             print(f"Button: {players_in_position[0].name} (SB), BB: {players_in_position[1].name}")
         else:
@@ -252,7 +251,13 @@ class GameOrchestrator:
             "result": {},
             "pokerkit_operations": [],  # Store raw PokerKit operations for conversion
             "hole_cards": {},  # Store hole cards for each player
-            "player_names": [p.name for p in self.get_players_in_position_order()]
+            "player_names": player_names,
+            "player_position_map": {},
+        }
+        hand_data["player_position_map"] = {
+            player.player_index: idx
+            for idx, player in enumerate(players_in_position)
+            if player.player_index is not None
         }
        
         # Display hole cards
@@ -291,25 +296,32 @@ class GameOrchestrator:
                 rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
             
             # Parse response
-            rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
-            if SEE_MODEL_MONOLOGUE:
-                print(f"{player_name}: {commentary}")
+            auto_corrected = False
+            raw_response = rsp
+            try:
+                decision = parse_player_decision(rsp, legal, game_state)
+            except InvalidActionError as err:
+                fallback_token = select_fallback_token(legal)
+                print(f"ILLEGAL MOVE from {player_name}: {err}. Using fallback '{fallback_token}'.")
+                self.players[actual_player_idx].illegal_moves += 1
+                auto_corrected = True
+                decision = parse_player_decision(fallback_token, legal, game_state)
+                if not decision.commentary:
+                    decision.commentary = "Auto-selected fallback action after invalid response."
+            
+            if SEE_MODEL_MONOLOGUE and decision.commentary:
+                print(f"{player_name}: {decision.commentary}")
+
             hand_data["actions"].append({
                 "player": actual_player_idx,
-                "action": rsp,
-                "commentary": commentary
+                "action": decision.token,
+                "commentary": decision.commentary,
+                "raw_response": raw_response.strip(),
+                "auto_corrected": auto_corrected,
             })
-            
-                
-            # Validate move
-            if not LEGAL_TOKEN_RE.match(rsp):
-                print(f'ILLEGAL MOVE: {rsp} - auto-folding')
-                rsp = "fold" 
-                hand_data["actions"][-1]["action"] = "fold"
-                self.players[actual_player_idx].illegal_moves += 1
-                
+
             try:               
-                PromptAdapter.apply_token(st, rsp)
+                PromptAdapter.apply_token(st, decision.token)
 
                 if st.can_show_or_muck_hole_cards():
                     print("SHOWWWWWWWWWDOWNNNNNNNNN")

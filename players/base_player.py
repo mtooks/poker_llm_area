@@ -8,9 +8,6 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Sequence, Optional
-from dotenv import load_dotenv
-
-
 class BasePlayer(ABC):
     """Abstract base class for all poker players."""
 
@@ -21,6 +18,8 @@ class BasePlayer(ABC):
         initial_stack: int = 400,
         system_prompt: Optional[str] = None,
         enable_reflection: bool = False,
+        max_hand_history: int = 50,
+        player_index: Optional[int] = None,
     ):
         self.name = name
         self.model = model
@@ -31,6 +30,7 @@ class BasePlayer(ABC):
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         self.structured_system_prompt = self._get_structured_system_prompt()
         self.enable_reflection = enable_reflection
+        self.max_hand_history = max(1, max_hand_history)
         
         # Add tracking for strategic decisions
         self.decision_times = []
@@ -39,7 +39,7 @@ class BasePlayer(ABC):
         self.bluff_successes = 0
         self.value_bets = 0
         self.value_bet_successes = 0
-        self.player_index = None  # Will be set in update_memory
+        self.player_index = player_index
         self.illegal_moves = 0
         
         # Add player notes - a space for the player to record observations
@@ -93,7 +93,7 @@ class BasePlayer(ABC):
         if self.hand_history:
             memory_summary = self._create_memory_summary()
             if memory_summary:
-                full_messages.append({
+                full_©.append({
                     "role": "user", 
                     "content": f"Previous hands summary:\n{memory_summary}"
                 })
@@ -357,9 +357,31 @@ class BasePlayer(ABC):
         return summary
        
     
+    def _get_state_index_for_hand(self, hand_result: Dict[str, Any]) -> Optional[int]:
+        """Return this player's index within the hand's state ordering."""
+        if not hand_result:
+            return None
+        position_map = hand_result.get("player_position_map") or {}
+        if self.player_index is not None and self.player_index in position_map:
+            return position_map[self.player_index]
+        player_names = hand_result.get("player_names", [])
+        if player_names and self.name in player_names:
+            return player_names.index(self.name)
+        return None
+
+    def _get_profit_for_hand(self, hand_result: Dict[str, Any]) -> int:
+        """Return chip profit for this player from a specific hand."""
+        state_index = self._get_state_index_for_hand(hand_result)
+        if state_index is None:
+            return 0
+        key = f"profit_p{state_index}"
+        return hand_result.get("result", {}).get(key, 0)
+
     async def update_memory(self, hand_result: Dict[str, Any]) -> None:
         """Store hand result in player's memory and update statistics."""
         self.hand_history.append(hand_result)
+        if len(self.hand_history) > self.max_hand_history:
+            self.hand_history = self.hand_history[-self.max_hand_history:]
         
         # Set current hand ID for memory management
         self.current_hand_id = hand_result.get('hand_id')
@@ -391,25 +413,28 @@ class BasePlayer(ABC):
         self._clear_conversation_for_new_hand()
         
         # Additional tracking for strategic patterns
+        hand_profit = self._get_profit_for_hand(hand_result)
         for action in hand_result["actions"]:
             if action["player"] == self.player_index:  # Need to track player_index
                 # Analyze if this was a bluff (holding weak cards but betting/raising)
                 if action["action"].startswith("raise_to:") and "bluff" in action.get("commentary", "").lower():
                     self.bluff_attempts += 1
-                    if hand_result["result"].get(f"profit_p{self.player_index}", 0) > 0:
+                    if hand_profit > 0:
                         self.bluff_successes += 1
                 
                 # Analyze if this was a value bet (holding strong cards and betting/raising)
                 if action["action"].startswith("raise_to:") and "value" in action.get("commentary", "").lower():
                     self.value_bets += 1
-                    if hand_result["result"].get(f"profit_p{self.player_index}", 0) > 0:
+                    if hand_profit > 0:
                         self.value_bet_successes += 1
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Return comprehensive performance metrics for this player."""
+        wins = sum(1 for hand in self.hand_history if self._get_profit_for_hand(hand) > 0)
+        win_rate = wins / len(self.hand_history) if self.hand_history else 0
         metrics = {
             "total_profit": self.stack - self.initial_stack,
-            "win_rate": sum(1 for hand in self.hand_history if hand["result"].get(f"profit_p{self.player_index}", 0) > 0) / len(self.hand_history) if self.hand_history else 0,
+            "win_rate": win_rate,
             "avg_decision_time": sum(self.decision_times) / len(self.decision_times) if self.decision_times else 0,
             "position_stats": self.position_stats,
             "bluff_success_rate": self.bluff_successes / self.bluff_attempts if self.bluff_attempts > 0 else 0,
@@ -451,7 +476,7 @@ class BasePlayer(ABC):
             return ""
         
         # Add overall performance stats
-        total_wins = sum(1 for hand in self.hand_history if hand["result"].get(f"profit_p{self.player_index}", 0) > 0)
+        total_wins = sum(1 for hand in self.hand_history if self._get_profit_for_hand(hand) > 0)
         win_rate = (total_wins / len(self.hand_history)) * 100 if self.hand_history else 0
         
         # Combine detailed hand summaries

@@ -1,10 +1,7 @@
 """Grok (xAI) player implementation for Poker RL agents."""
 
-import os
-from pathlib import Path
 from typing import Sequence, Dict
 from pydantic import BaseModel
-
 
 # Handle optional imports
 try:
@@ -13,12 +10,7 @@ try:
 except ImportError:
     OPENAI_AVAILABLE = False
 
-try:
-    from dotenv import load_dotenv
-    DOTENV_AVAILABLE = True
-except ImportError:
-    DOTENV_AVAILABLE = False
-
+from utils.env_loader import get_env_value
 from .base_player import BasePlayer
 
 
@@ -45,19 +37,7 @@ class GrokPlayer(BasePlayer):
                 "Grok provider requires the 'openai' package. Install with 'pip install openai'"
             )
 
-        if not DOTENV_AVAILABLE:
-            raise ImportError(
-                "Grok provider requires the 'python-dotenv' package. Install with 'pip install python-dotenv'"
-            )
-
-        # Load environment variables from .env file if it exists
-        env_path = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / ".env"
-        if env_path.exists():
-            load_dotenv(dotenv_path=env_path)
-
-        xai_key = os.getenv("XAI_API_KEY", "")
-        if not xai_key:
-            raise ValueError("XAI_API_KEY environment variable is not set")
+        xai_key = get_env_value("XAI_API_KEY", required=True)
 
         # Point OpenAI client at xAI base URL
         self.client = openai.OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
