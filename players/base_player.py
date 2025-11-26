@@ -93,7 +93,7 @@ class BasePlayer(ABC):
         if self.hand_history:
             memory_summary = self._create_memory_summary()
             if memory_summary:
-                full_©.append({
+                full_messages.append({
                     "role": "user", 
                     "content": f"Previous hands summary:\n{memory_summary}"
                 })
@@ -183,10 +183,12 @@ class BasePlayer(ABC):
             "decision_type": "show_or_muck",
             "context": "Decide whether to reveal your hole cards or muck them face-down",
             "considerations": [
-                "Showing reveals your playing style to opponents",
-                "Mucking keeps your strategy hidden", 
-                "Table image and future hands matter",
-                "Information warfare is part of poker strategy"
+                "CRITICAL: If you muck, you FORFEIT the pot - you cannot win if you muck",
+                "You MUST show your cards to claim the pot at showdown",
+                "Only muck if you are certain you will not win the pot",
+                "If you have a chance to win, you must show your cards",
+                "Showing reveals your playing style to opponents, but it's required to win",
+                "Mucking is forfeiting, not just hiding information"
             ],
             "notes": self.notes
         }
@@ -195,7 +197,7 @@ class BasePlayer(ABC):
             {
                 "state": showdown_context,
                 "legal": legal_actions,
-                "instructions": "Choose 'show' to reveal your cards or 'muck' to fold face-down. Consider your table image and information strategy.",
+                "instructions": "IMPORTANT: In poker, you can only win the pot if you show your cards. If you muck, you forfeit any claim to the pot. Choose 'show' to reveal your cards and potentially win, or 'muck' only if you are certain you will not win. If you think you might have the best hand, you MUST show.",
             },
             separators=(',', ':'),
         )

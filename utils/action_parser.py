@@ -105,7 +105,22 @@ def select_fallback_token(legal_tokens: Iterable[str]) -> str:
     if not legal_actions:
         return "fold"
 
-    priority = ["fold", "muck", "check", "call", "show"]
+    # At showdown, prefer "show" over "muck" because showing allows you to win
+    # while mucking forfeits the pot. In betting rounds, prefer safer actions.
+    has_showdown_options = any(action.kind in ("show", "muck") for action in legal_actions)
+    if has_showdown_options:
+        # At showdown: prefer show over muck (show allows winning, muck forfeits)
+        # Only show and muck should be available at showdown
+        if any(action.kind == "show" for action in legal_actions):
+            return "show"
+        if any(action.kind == "muck" for action in legal_actions):
+            return "muck"
+        # Fallback: should not reach here at showdown
+        priority = ["show", "muck"]
+    else:
+        # During betting: prefer fold > check > call (safer actions first)
+        priority = ["fold", "check", "call"]
+    
     for desired in priority:
         for action in legal_actions:
             if action.kind == desired:

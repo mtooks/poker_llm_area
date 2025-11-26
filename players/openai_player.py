@@ -85,7 +85,7 @@ class OpenAIPlayer(BasePlayer):
                 if action == 'show':
                     print("HOOOOOOOLLYYYYYY HE SHOWEEEEDDDD THE BLUFFFFF")
             else:
-                print('Error in structured output. Debug openai player')
+                print(f'Error in structured output. Unexpected action received: action="{action}", amount={amount}, reason="{reason}", notes="{notes}". Debug openai player.')
             if notes:
                 result += f"\nNOTES: {notes}"
             return result
