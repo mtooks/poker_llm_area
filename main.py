@@ -6,6 +6,9 @@ Fix the Order of logging and output display.
 Do different prompts actually make a difference? i.e. does Claude play better with a different prompt?
     If all models are given the same prompt, does win rate change?
 Allow LLM's to talk to each other
+Have legal_tokens() emit structured options and render text in one place
+when all players are all in before the river, game auto ends
+tool calling lol?
 
 Fix how wins are counted for chop pots
 more stats (agression etc)
@@ -18,23 +21,18 @@ add handling for promtps for strutured output
 - Fixed memory that is being passed to each player
 - fix showdown 
 - verify that game memory is actually correct.
-- Game state has incorrect palyer stacks
-- remove card burning and hole card dealing
-- check to see if turns are called correctly
-- reasoning and notes are basically the same thing, so consolidate
 honestly just turn off notes and memory for now
 """
 
 import asyncio
-import json
 import random
-import re
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from pokerkit import Automation, Mode, NoLimitTexasHoldem
-from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling
+from pokerkit.state import HoleCardsShowingOrMucking, BetCollection, BlindOrStraddlePosting, CardBurning, HoleDealing, ChipsPulling, ChipsPushing
 from players.player_factory import PlayerFactory
 from utils.action_converter import ActionConverter
+from utils.action_parser import InvalidActionError, parse_player_decision, select_fallback_token
 from game_config import GAME_CONFIG, PLAYER_CONFIGS
 
 # Game configuration - all values now read from GAME_CONFIG
@@ -43,9 +41,6 @@ MIN_BET = GAME_CONFIG["min_bet"]
 RNG_SEED = GAME_CONFIG["rng_seed"]
 ANTE_AMOUNT = GAME_CONFIG["ante_amount"]
 SEE_MODEL_MONOLOGUE = GAME_CONFIG["see_model_monologue"]
-LEGAL_TOKEN_RE = re.compile(r"^(fold|check|call|raise_to:\s*\d+|show|muck)$")
-
-
 class PromptAdapter:
     """Helpers for state → prompt and token → state transition."""
     
@@ -153,15 +148,15 @@ class GameOrchestrator:
         
         # Create players using the factory
         self.players = []
-        for config in PLAYER_CONFIGS:
+        for idx, config in enumerate(PLAYER_CONFIGS):
             player = PlayerFactory.create_player(
                 name=config["name"],
                 provider=config["provider"],
                 model=config.get("model"),  # Use None to get default model
                 initial_stack=GAME_CONFIG["initial_stack"],
-                enable_reflection=config.get("enable_reflection", GAME_CONFIG.get("enable_reflection", False)),
-                use_structured_output=config.get("use_structured_output")  # Use config value or None for provider default
+                enable_reflection=config.get("enable_reflection", GAME_CONFIG.get("enable_reflection", False))
             )
+            player.player_index = idx
             self.players.append(player)
         
         self.dealer_position = 0
@@ -198,7 +193,6 @@ class GameOrchestrator:
                 Automation.CARD_BURNING,
                 Automation.CHIPS_PUSHING,
                 Automation.CHIPS_PULLING,
-                Automation.RUNOUT_COUNT_SELECTION,  # Added to handle all-in runout
             ),
             False,       # ante_trimming_status
             raw_antes,   # raw_antes - now from config
@@ -240,6 +234,7 @@ class GameOrchestrator:
         
         # Get players in position order for this hand
         players_in_position = self.get_players_in_position_order()
+        player_names = [p.name for p in players_in_position]
         if len(players_in_position) == 2:
             print(f"Button: {players_in_position[0].name} (SB), BB: {players_in_position[1].name}")
         else:
@@ -258,7 +253,13 @@ class GameOrchestrator:
             "result": {},
             "pokerkit_operations": [],  # Store raw PokerKit operations for conversion
             "hole_cards": {},  # Store hole cards for each player
-            "player_names": [p.name for p in self.get_players_in_position_order()]
+            "player_names": player_names,
+            "player_position_map": {},
+        }
+        hand_data["player_position_map"] = {
+            player.player_index: idx
+            for idx, player in enumerate(players_in_position)
+            if player.player_index is not None
         }
        
         # Display hole cards
@@ -269,17 +270,70 @@ class GameOrchestrator:
             print(f"P{i}, aka {self.players[actual_player_idx].name} hole cards:", 
                   [self.card_to_emoji(card) for card in hole_cards])
         
-        # Betting loop
-        while st.status:
-            plr_idx = st.actor_index
+        # Betting loop - Continue until state is complete (st.status = False)
+        # When all players are all-in before the river, PokerKit automation needs to:
+        # 1. Deal remaining board cards (turn/river) - handled by Automation.BOARD_DEALING
+        # 2. Process showdown - requires manual show/muck (Automation.HOLE_CARDS_SHOWING_OR_MUCKING disabled)
+        # 3. Push chips to winners - handled by Automation.CHIPS_PUSHING
+        # 
+        # Key insight from PokerKit source: Automation happens synchronously when operations are applied.
+        # When actor_index is None and can_show_or_muck_hole_cards() is False but status is still True,
+        # PokerKit is in a transition state where automation is processing. We must continue the loop
+        # and check state properties to trigger state transitions, then handle the next phase.
+        #
+        # After applying an operation, automation processes immediately. If no player action is needed,
+        # the state transitions automatically until either: 1) player action is needed, or 2) status becomes False.
+        
+        # Track iterations to prevent infinite loops
+        loop_iterations = 0
+        max_iterations = 1000  # Safety limit
+        
+        while st.status and loop_iterations < max_iterations:
+            loop_iterations += 1
+            
+            # Use turn_index which checks both actor_index and showdown_index
+            # According to PokerKit docs, turn_index returns the player who should act,
+            # or None if no one is in turn.
+            plr_idx = st.turn_index
+            
             if plr_idx is None:
-                # Check if we're in showdown phase
-                if st.can_show_or_muck_hole_cards():
-                    plr_idx = st.showdown_index
-                else:
-                    # No player to act - let PokerKit handle automation (like runout)
-                    # Break the loop to let automation run
+                # No player needs to act, but status is still True
+                # This happens when all players are all-in before the river and automation is processing.
+                # 
+                # According to PokerKit source code analysis:
+                # - When all players are all-in before the river, automation should:
+                #   1. Start showdown (if not on last street, will deal remaining board cards first)
+                #   2. Deal remaining board cards automatically (Automation.BOARD_DEALING enabled)
+                #   3. Show cards manually (Automation.HOLE_CARDS_SHOWING_OR_MUCKING disabled - we handle this)
+                #   4. Push chips automatically (Automation.CHIPS_PUSHING enabled)
+                #   5. Set status = False when complete
+                #
+                # Since automation processes synchronously when operations are applied,
+                # if turn_index is None but status is still True, it means either:
+                # 1. Automation is processing (should complete immediately)
+                # 2. State is waiting for manual action (showdown cards - but turn_index should be set)
+                # 3. There's an issue preventing automation from completing
+                #
+                # The issue: When all players are all-in and Automation.HOLE_CARDS_SHOWING_OR_MUCKING
+                # is disabled, PokerKit requires manual show/muck decisions. However, if turn_index
+                # is None, it means no player is in turn to show/muck, which shouldn't happen if
+                # automation is processing correctly.
+                #
+                # Solution: If turn_index is None but status is True, wait a brief moment and check
+                # again. If still None, break and let diagnostic code identify the issue.
+                # In practice, automation should process synchronously, so this shouldn't happen.
+                # However, we need to handle the case where automation hasn't completed yet.
+                
+                # Check if we're stuck (no progress after multiple iterations)
+                if loop_iterations > 10:  # Allow a few iterations for automation to process
+                    # We've looped multiple times with no player action - something might be wrong
+                    # Break and let the diagnostic code (if enabled) or error handling identify the issue
+                    # However, automation should have processed by now, so this indicates a problem
                     break
+                
+                # Continue loop - automation might still be processing
+                # However, since automation is synchronous, this shouldn't be necessary
+                continue
                 
             actual_player_idx = (plr_idx + self.dealer_position) % len(self.players)
             player_name = self.players[actual_player_idx].name
@@ -299,29 +353,41 @@ class GameOrchestrator:
                 rsp = await self.players[actual_player_idx].make_decision(game_state, legal)
             
             # Parse response
-            if '@' in rsp:
-                rsp, commentary = rsp.split('@')[0].strip(), rsp.split('@')[1]
-            else:
-                # If no @ separator, treat entire response as action with default commentary
-                commentary = "No commentary provided"
-            if SEE_MODEL_MONOLOGUE:
-                print(f"{player_name}: {commentary}")
+            auto_corrected = False
+            raw_response = rsp
+            try:
+                decision = parse_player_decision(rsp, legal, game_state)
+            except InvalidActionError as err:
+                fallback_token = select_fallback_token(legal)
+                print(f"ILLEGAL MOVE from {player_name}: {err}. Using fallback '{fallback_token}'.")
+                self.players[actual_player_idx].illegal_moves += 1
+                auto_corrected = True
+                decision = parse_player_decision(fallback_token, legal, game_state)
+                if not decision.commentary:
+                    decision.commentary = "Auto-selected fallback action after invalid response."
+            
+            if SEE_MODEL_MONOLOGUE and decision.commentary:
+                print(f"{player_name}: {decision.commentary}")
+
             hand_data["actions"].append({
                 "player": actual_player_idx,
-                "action": rsp,
-                "commentary": commentary
+                "action": decision.token,
+                "commentary": decision.commentary,
+                "raw_response": raw_response.strip(),
+                "auto_corrected": auto_corrected,
             })
-            
-                
-            # Validate move
-            if not LEGAL_TOKEN_RE.match(rsp):
-                print(f'ILLEGAL MOVE: {rsp} - auto-folding')
-                rsp = "fold" 
-                hand_data["actions"][-1]["action"] = "fold"
-                self.players[actual_player_idx].illegal_moves += 1
-                
+
             try:               
-                PromptAdapter.apply_token(st, rsp)
+                PromptAdapter.apply_token(st, decision.token)
+
+                # After applying an operation, PokerKit processes automation synchronously
+                # Automation will:
+                # 1. Deal board cards (if Automation.BOARD_DEALING enabled)
+                # 2. Show cards (if Automation.HOLE_CARDS_SHOWING_OR_MUCKING enabled - but we disabled it)
+                # 3. Push chips (if Automation.CHIPS_PUSHING enabled)
+                # 
+                # These happen automatically within the apply_token call, so by the time we
+                # check st.status again, automation should have processed.
 
                 if st.can_show_or_muck_hole_cards():
                     print("SHOWWWWWWWWWDOWNNNNNNNNN")
@@ -329,16 +395,21 @@ class GameOrchestrator:
                 # Print new developments
                 board = [str(card) for card in st.get_board_cards(0)]                
                     
-                # Print new actions
+                # Print new actions (check for operations added by automation)
                 if len(st.operations) > last_history_len:
                     filtered_ops = (BetCollection, CardBurning, HoleDealing, ChipsPulling, BlindOrStraddlePosting)                    
                     
                     for op in st.operations[last_history_len:]:
-                        if isinstance(op, HoleCardsShowingOrMucking) and op.hole_cards:
-                            cards_str = [str(card) for card in op.hole_cards]
-                            emoji_cards = [self.card_to_emoji(card) for card in cards_str]
+                        if isinstance(op, HoleCardsShowingOrMucking):
                             actual_player = (op.player_index + self.dealer_position) % len(self.players)
-                            print(f"Player {self.players[actual_player].name} shows: {emoji_cards}")
+                            if op.hole_cards:
+                                # Player showed their cards
+                                cards_str = [str(card) for card in op.hole_cards]
+                                emoji_cards = [self.card_to_emoji(card) for card in cards_str]
+                                print(f"Player {self.players[actual_player].name} shows: {emoji_cards}")
+                            else:
+                                # Player mucked their hand
+                                print(f"Player {self.players[actual_player].name} mucks hand")
                         elif not isinstance(op, filtered_ops):
                             readable_action = ActionConverter.to_human_readable(op, player_names)
                             if readable_action and readable_action.strip():  # Only print if there's actually something to show
@@ -350,33 +421,54 @@ class GameOrchestrator:
                     hand_data["final_board"] = board.copy()
 
                 last_history_len = len(st.operations)
-                        
-                    # Print stack changes only at the end of the hand
-                    # (Remove the stack printing here - it will be shown at the end of the hand)
+                
+                # After applying an operation, check if state is still active
+                # If status became False, automation completed successfully
+                # If status is still True but no player needs to act, we'll handle it in the loop
 
             except Exception as e:
                 print(f"Error in hand {hand_no}: {e}")
                 # Don't try to fold if there's no player to act
                 if st.actor_index is not None or st.showdown_index is not None:
                     try:
-                        if st.all_in_status:
-                            for i in st.showdown_indices:
-                                st.show_or_muck_hole_cards(True, i)
                         st.fold()
-                        
                     except:
                         pass
 
-                    
-        
-
-
         # Showdown & settle pots
+        # Validate that winners showed their cards (poker rule: if you win, you must show)
+        players_who_showed = set()
+        players_who_mucked = set()
+        
+        for op in st.operations:
+            if isinstance(op, HoleCardsShowingOrMucking):
+                pos_idx = op.player_index
+                if op.hole_cards:
+                    players_who_showed.add(pos_idx)
+                else:
+                    players_who_mucked.add(pos_idx)
+        
+        # Find who won the pot (check ChipsPushing operations)
+        winners = set()
+        for op in st.operations:
+            if isinstance(op, ChipsPushing):
+                if hasattr(op, 'amounts') and op.amounts:
+                    for i, amount in enumerate(op.amounts):
+                        if amount > 0:
+                            winners.add(i)
+        
+        # Check if any winners mucked (this violates poker rules)
+        winners_who_mucked = winners & players_who_mucked
+        if winners_who_mucked:
+            for pos_idx in winners_who_mucked:
+                actual_player_idx = (pos_idx + self.dealer_position) % len(self.players)
+                player_name = self.players[actual_player_idx].name
+                print(f"⚠️  WARNING: {player_name} won the pot but mucked their hand! This violates poker rules.")
+                print(f"   In real poker, you must show your cards to claim the pot.")
+        
         players_in_position = self.get_players_in_position_order()
         result_str = " | ".join([f"{players_in_position[i].name}={st.stacks[i]}" for i in range(len(st.stacks))])
         print(f"Hand {hand_no} result → stacks: {result_str}")
-        
-      
         
         # Update hand result data
         hand_data["result"] = {

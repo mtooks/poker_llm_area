@@ -8,9 +8,6 @@ from pathlib import Path
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Sequence, Optional
-from dotenv import load_dotenv
-
-
 class BasePlayer(ABC):
     """Abstract base class for all poker players."""
 
@@ -21,7 +18,8 @@ class BasePlayer(ABC):
         initial_stack: int = 400,
         system_prompt: Optional[str] = None,
         enable_reflection: bool = False,
-        use_structured_output: bool = False,
+        max_hand_history: int = 50,
+        player_index: Optional[int] = None,
     ):
         self.name = name
         self.model = model
@@ -32,6 +30,7 @@ class BasePlayer(ABC):
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         self.structured_system_prompt = self._get_structured_system_prompt()
         self.enable_reflection = enable_reflection
+        self.max_hand_history = max(1, max_hand_history)
         
         # Add tracking for strategic decisions
         self.decision_times = []
@@ -40,7 +39,7 @@ class BasePlayer(ABC):
         self.bluff_successes = 0
         self.value_bets = 0
         self.value_bet_successes = 0
-        self.player_index = None  # Will be set in update_memory
+        self.player_index = player_index
         self.illegal_moves = 0
         
         # Add player notes - a space for the player to record observations
@@ -52,9 +51,6 @@ class BasePlayer(ABC):
         
         # Store detailed hand summaries for memory
         self.hand_summaries = []
-        
-        # Structured output preference
-        self.use_structured_output = use_structured_output
 
     
     def _get_structured_system_prompt(self) -> str:
@@ -82,18 +78,14 @@ class BasePlayer(ABC):
 
 
     @abstractmethod
-    async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
+    async def _chat(self, messages: Sequence[Dict[str, str]]) -> str:
         """Send messages to the LLM provider and get response."""
         pass
 
     
 
-    async def ask(self, messages: Sequence[Dict[str, str]], structured_output: bool = None) -> str:
+    async def ask(self, messages: Sequence[Dict[str, str]]) -> str:
         """Route request to appropriate LLM provider with intelligent memory management."""
-        # Determine structured output preference
-        if structured_output is None:
-            structured_output = getattr(self, 'use_structured_output', False)
-        
         # Start with system prompt
         full_messages = [{"role": "system", "content": self.system_prompt}]
 
@@ -114,8 +106,8 @@ class BasePlayer(ABC):
         if messages and messages[-1]["role"] == "user" and (not self.conversation_history or 
                                                           messages[-1] != self.conversation_history[-1]):
             full_messages.append(messages[-1])
-
-        response = await self._chat(full_messages, structured_output=structured_output)
+        
+        response = await self._chat(full_messages)
         
         # Update conversation history with user's message and AI's response
         if messages and messages[-1]["role"] == "user" and (not self.conversation_history or 
@@ -191,10 +183,12 @@ class BasePlayer(ABC):
             "decision_type": "show_or_muck",
             "context": "Decide whether to reveal your hole cards or muck them face-down",
             "considerations": [
-                "Showing reveals your playing style to opponents",
-                "Mucking keeps your strategy hidden", 
-                "Table image and future hands matter",
-                "Information warfare is part of poker strategy"
+                "CRITICAL: If you muck, you FORFEIT the pot - you cannot win if you muck",
+                "You MUST show your cards to claim the pot at showdown",
+                "Only muck if you are certain you will not win the pot",
+                "If you have a chance to win, you must show your cards",
+                "Showing reveals your playing style to opponents, but it's required to win",
+                "Mucking is forfeiting, not just hiding information"
             ],
             "notes": self.notes
         }
@@ -203,7 +197,7 @@ class BasePlayer(ABC):
             {
                 "state": showdown_context,
                 "legal": legal_actions,
-                "instructions": "Choose 'show' to reveal your cards or 'muck' to fold face-down. Consider your table image and information strategy.",
+                "instructions": "IMPORTANT: In poker, you can only win the pot if you show your cards. If you muck, you forfeit any claim to the pot. Choose 'show' to reveal your cards and potentially win, or 'muck' only if you are certain you will not win. If you think you might have the best hand, you MUST show.",
             },
             separators=(',', ':'),
         )
@@ -365,9 +359,31 @@ class BasePlayer(ABC):
         return summary
        
     
+    def _get_state_index_for_hand(self, hand_result: Dict[str, Any]) -> Optional[int]:
+        """Return this player's index within the hand's state ordering."""
+        if not hand_result:
+            return None
+        position_map = hand_result.get("player_position_map") or {}
+        if self.player_index is not None and self.player_index in position_map:
+            return position_map[self.player_index]
+        player_names = hand_result.get("player_names", [])
+        if player_names and self.name in player_names:
+            return player_names.index(self.name)
+        return None
+
+    def _get_profit_for_hand(self, hand_result: Dict[str, Any]) -> int:
+        """Return chip profit for this player from a specific hand."""
+        state_index = self._get_state_index_for_hand(hand_result)
+        if state_index is None:
+            return 0
+        key = f"profit_p{state_index}"
+        return hand_result.get("result", {}).get(key, 0)
+
     async def update_memory(self, hand_result: Dict[str, Any]) -> None:
         """Store hand result in player's memory and update statistics."""
         self.hand_history.append(hand_result)
+        if len(self.hand_history) > self.max_hand_history:
+            self.hand_history = self.hand_history[-self.max_hand_history:]
         
         # Set current hand ID for memory management
         self.current_hand_id = hand_result.get('hand_id')
@@ -399,25 +415,28 @@ class BasePlayer(ABC):
         self._clear_conversation_for_new_hand()
         
         # Additional tracking for strategic patterns
+        hand_profit = self._get_profit_for_hand(hand_result)
         for action in hand_result["actions"]:
             if action["player"] == self.player_index:  # Need to track player_index
                 # Analyze if this was a bluff (holding weak cards but betting/raising)
                 if action["action"].startswith("raise_to:") and "bluff" in action.get("commentary", "").lower():
                     self.bluff_attempts += 1
-                    if hand_result["result"].get(f"profit_p{self.player_index}", 0) > 0:
+                    if hand_profit > 0:
                         self.bluff_successes += 1
                 
                 # Analyze if this was a value bet (holding strong cards and betting/raising)
                 if action["action"].startswith("raise_to:") and "value" in action.get("commentary", "").lower():
                     self.value_bets += 1
-                    if hand_result["result"].get(f"profit_p{self.player_index}", 0) > 0:
+                    if hand_profit > 0:
                         self.value_bet_successes += 1
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """Return comprehensive performance metrics for this player."""
+        wins = sum(1 for hand in self.hand_history if self._get_profit_for_hand(hand) > 0)
+        win_rate = wins / len(self.hand_history) if self.hand_history else 0
         metrics = {
             "total_profit": self.stack - self.initial_stack,
-            "win_rate": sum(1 for hand in self.hand_history if hand["result"].get(f"profit_p{self.player_index}", 0) > 0) / len(self.hand_history) if self.hand_history else 0,
+            "win_rate": win_rate,
             "avg_decision_time": sum(self.decision_times) / len(self.decision_times) if self.decision_times else 0,
             "position_stats": self.position_stats,
             "bluff_success_rate": self.bluff_successes / self.bluff_attempts if self.bluff_attempts > 0 else 0,
@@ -459,7 +478,7 @@ class BasePlayer(ABC):
             return ""
         
         # Add overall performance stats
-        total_wins = sum(1 for hand in self.hand_history if hand["result"].get(f"profit_p{self.player_index}", 0) > 0)
+        total_wins = sum(1 for hand in self.hand_history if self._get_profit_for_hand(hand) > 0)
         win_rate = (total_wins / len(self.hand_history)) * 100 if self.hand_history else 0
         
         # Combine detailed hand summaries

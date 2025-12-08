@@ -1,7 +1,5 @@
 """Gemini player implementation for Poker RL agents."""
 
-import os
-from pathlib import Path
 from typing import Sequence, Dict
 from pydantic import BaseModel
 
@@ -12,12 +10,7 @@ try:
 except ImportError:
     GEMINI_AVAILABLE = False
 
-try:
-    from dotenv import load_dotenv
-    DOTENV_AVAILABLE = True
-except ImportError:
-    DOTENV_AVAILABLE = False
-
+from utils.env_loader import get_env_value
 from .base_player import BasePlayer
 
 
@@ -40,16 +33,10 @@ class GeminiPlayer(BasePlayer):
 
     def _setup_gemini_client(self):
         """Setup Gemini client with API key."""
-                
-        # Load environment variables from .env file if it exists
-        env_path = Path(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))) / '.env'
-        if env_path.exists():
-            load_dotenv(dotenv_path=env_path)
-            
-        gemini_key = os.getenv("GEMINI_KEY", "")
-        if not gemini_key:
-            raise ValueError("GEMINI_KEY environment variable is not set")
-        
+        if not GEMINI_AVAILABLE:
+            raise ImportError("Gemini provider requires the 'google-genai' package. Install with 'pip install google-genai'")
+
+        gemini_key = get_env_value("GEMINI_KEY", required=True)
         self.client = genai.Client(api_key = gemini_key)
 
     async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
