@@ -6,6 +6,8 @@ from .gemini_player import GeminiPlayer
 from .anthropic_player import AnthropicPlayer
 from .all_in_player import AllInPlayer
 from .grok_player import GrokPlayer
+from .callbox_player import CallboxPlayer
+from .gto_player import GTOPlayer
 from .player_factory import PlayerFactory
 
 __all__ = [
@@ -15,5 +17,7 @@ __all__ = [
     "AnthropicPlayer",
     "AllInPlayer",
     "GrokPlayer",
+    "CallboxPlayer",
+    "GTOPlayer",
     "PlayerFactory"
 ] 

@@ -21,6 +21,10 @@ poker_llm_area/
 │   ├── openai_player.py         # OpenAI-specific implementation
 │   ├── gemini_player.py         # Gemini-specific implementation
 │   ├── anthropic_player.py      # Anthropic-specific implementation
+│   ├── gto_player.py            # Deterministic GTO-inspired baseline
+│   ├── callbox_player.py        # Always-call baseline
+│   ├── all_in_player.py         # Always-shove baseline
+│   ├── grok_player.py           # xAI Grok models
 │   └── player_factory.py        # Factory for creating players
 ├── player.py                    # Main entry point (backward compatible)
 └── example_usage.py             # Usage examples
@@ -76,6 +80,11 @@ legacy_player = Player("Ivy", "openai", "gpt-4")
 - `claude-3-sonnet` (default)
 - `claude-3-haiku`
 - `claude-3-opus`
+
+### Deterministic Baselines
+- `gto-bot` (GTO-inspired, no API key needed)
+- `all-in-bot` (always moves all-in)
+- `callbox-bot` (always calls/checks)
 
 ## Factory Benefits
 

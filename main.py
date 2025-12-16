@@ -160,6 +160,11 @@ class GameOrchestrator:
             self.players.append(player)
         
         self.dealer_position = 0
+        
+        # Initialize PnL tracker
+        from utils.pnl_tracker import PnLTracker
+        self.pnl_tracker = PnLTracker()
+        self.pnl_tracker.initialize_players(self.players)
 
     def _make_state(self):
         """Create a fresh PokerKit state."""
@@ -388,9 +393,6 @@ class GameOrchestrator:
                 # 
                 # These happen automatically within the apply_token call, so by the time we
                 # check st.status again, automation should have processed.
-
-                if st.can_show_or_muck_hole_cards():
-                    print("SHOWWWWWWWWWDOWNNNNNNNNN")
                 
                 # Print new developments
                 board = [str(card) for card in st.get_board_cards(0)]                
@@ -485,6 +487,9 @@ class GameOrchestrator:
         for idx, player in enumerate(players_in_position):
             player.update_stack(st.stacks[idx])
             await player.update_memory(hand_data)
+        
+        # Record PnL for this hand
+        self.pnl_tracker.record_hand(hand_no, players_in_position, hand_data)
             
         # Rotate dealer position
         self.dealer_position = (self.dealer_position + 1) % len(self.players)
@@ -521,6 +526,11 @@ class GameOrchestrator:
             print(f"Illegal moves: {player.illegal_moves}")
             if player.notes:
                 print(f"  Notes: {player.notes}")
+        
+        # Print PnL tracking file location
+        print(f"\n=== PnL Tracking ===")
+        print(f"  CSV file: {self.pnl_tracker.get_csv_path()}")
+        print(f"  Use this file to graph cumulative PnL over hands")
 
 ############################################################
 # ─────────────────────  MAIN  ─────────────────────────────

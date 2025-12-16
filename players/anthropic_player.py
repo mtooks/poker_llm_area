@@ -25,7 +25,14 @@ class AnthropicPlayer(BasePlayer):
         enable_reflection: bool = False,
         use_structured_output: bool = True,  # Default to True for Anthropic
     ):
-        super().__init__(name, model, initial_stack, system_prompt, enable_reflection, use_structured_output)
+        super().__init__(
+            name=name,
+            model=model,
+            initial_stack=initial_stack,
+            system_prompt=system_prompt,
+            enable_reflection=enable_reflection,
+            use_structured_output=use_structured_output,
+        )
         
         # Initialize Anthropic client
         self._setup_anthropic_client()
@@ -47,13 +54,19 @@ class AnthropicPlayer(BasePlayer):
     
     async def _chat_structured(self, messages: Sequence[Dict[str, str]]) -> str:
         """Send messages to Anthropic API with structured output."""
-        from pydantic import BaseModel
+        from pydantic import BaseModel, Field
+        from typing import Literal, Optional
         
         class PokerAction(BaseModel):
-            action: str
-            amount: int
-            reason: str
-            notes: str
+            action: Literal["fold", "check", "call", "raise_to", "show", "muck"] = Field(
+                description="The poker action to take. Must be one of: fold, check, call, raise_to, show, muck"
+            )
+            amount: Optional[int] = Field(
+                default=0,
+                description="Amount to raise to (only required for raise_to action, ignored otherwise)"
+            )
+            reason: str = Field(description="Your reasoning for this action")
+            notes: str = Field(default="", description="Optional notes to remember for future hands")
 
         # Convert from OpenAI-style messages to Anthropic format
         system_content = ""
@@ -97,16 +110,20 @@ class AnthropicPlayer(BasePlayer):
             reason = content.get("reason", "")
             notes = content.get("notes", "")
 
+            # Action is constrained by Literal, so we can trust it's valid
             if action in ("fold", "check", "call"):
                 result = f"{action}@{reason}" if reason else action
-            elif (action == "raise_to" or "raise_to" in action) and isinstance(amount, int):
+            elif action == "raise_to":
+                if not isinstance(amount, int) or amount <= 0:
+                    raise ValueError(f"raise_to requires a positive integer amount, got: {amount}")
                 result = f"raise_to:{amount}@{reason}" if reason else f"raise_to:{amount}"
-            elif action == "reflection":
-                result = notes + "@"
             elif action in ("show", "muck"):
-                result = action + "@" + notes
+                result = action + "@"
             else:
-                print('Error in structured output. Debug anthropic player')
+                # This should never happen due to Literal constraint
+                print(f'Unexpected action received (should be impossible): action="{action}"')
+                result = f"{action}@{reason}" if reason else action
+            
             if notes:
                 result += f"\nNOTES: {notes}"
             return result

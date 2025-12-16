@@ -2,11 +2,11 @@
 
 # Game settings
 GAME_CONFIG = {
-    "hands": 30,           # Number of hands to play
+    "hands": 5,           # Number of hands to play
     "blinds": (50, 100),   # Small blind, big blind
     "initial_stack": 10000,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
-    "see_model_monologue": False,  # Toggle player commentary on/off
+    "see_model_monologue": True,  # Toggle player commentary on/off
     "min_bet": 2,          # Minimum bet amount
     "ante_amount": 0,      # Ante amount per player (0 for no ante)
     "enable_reflection": False,  # Enable hand reflection for all players
@@ -14,20 +14,20 @@ GAME_CONFIG = {
 
 # Player configurations - easy to modify
 PLAYER_CONFIGS = [
-    # {
-    #     "name": "SamAltman",
-    #     "provider": "openai", 
-    #     "model": "gpt-4o-mini",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
-    #     "enable_reflection": True,  # Individual reflection setting
-    #     "use_structured_output": True,  # Use structured output for OpenAI
-    # },
     {
-        "name": "Grok",
-        "provider": "grok",
-        "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
-        "enable_reflection": False,
-        "use_structured_output": True
+        "name": "SamAltman",
+        "provider": "openai", 
+        "model": "gpt-5",  # Can be "gpt-4", "gpt-3.5-turbo", "gpt-4-turbo"
+        "enable_reflection": True,  # Individual reflection setting
+        "use_structured_output": True,  # Use structured output for OpenAI
     },
+    # {
+    #     "name": "Grok",
+    #     "provider": "grok",
+    #     "model": "grok-3",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
+    #     "enable_reflection": False,
+    #     "use_structured_output": True
+    # },
     # {
     #     "name": "Claude",
     #     "provider": "anthropic",
@@ -40,19 +40,25 @@ PLAYER_CONFIGS = [
     #     "model": "claude-3-7-sonnet-latest",  # Can be "claude-3-sonnet", "claude-3-haiku", "claude-3-opus"
     #     "enable_reflection": False,
     # },
+    {
+        "name": "GTO Baseline",
+        "provider": "gto",
+        "model": "gto-bot",
+        "enable_reflection": False,
+    },
     # {
     #     "name": "Chamath",
     #     "provider": "all-in",
     #     "model": "all-in-bot",
     #     "enable_reflection": False,  # All-in player doesn't need reflection
     # },
-    {
-        "name": "Callbox",
-        "provider": "callbox",
-        "model": "callbox-bot",
-        "enable_reflection": False,
-        "use_structured_output": False,  # Callbox doesn't need structured output
-    },
+    # {
+    #     "name": "Callbox",
+    #     "provider": "callbox",
+    #     "model": "callbox-bot",
+    #     "enable_reflection": False,
+    #     "use_structured_output": False,  # Callbox doesn't need structured output
+    # },
     #     {
     #     "name": "all_in",
     #     "provider": "all-in",

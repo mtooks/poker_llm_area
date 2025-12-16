@@ -8,6 +8,7 @@ from .anthropic_player import AnthropicPlayer
 from .all_in_player import AllInPlayer
 from .grok_player import GrokPlayer
 from .callbox_player import CallboxPlayer
+from .gto_player import GTOPlayer
 
 class PlayerFactory:
     """Factory class for creating poker players with different LLM providers."""
@@ -19,7 +20,8 @@ class PlayerFactory:
         "anthropic": ["claude-3-7-sonnet-latest", "claude-3-5-haiku-latest", "claude-opus-4-20250514", "claude-sonnet-4-20250514"],
         "grok": ["grok-4","grok-3","grok-3-mini"],
         "callbox": ["callbox-bot"],
-        "all-in": ["all-in-bot"]
+        "all-in": ["all-in-bot"],
+        "gto": ["gto-bot"]
     }
     
     @classmethod
@@ -48,7 +50,7 @@ class PlayerFactory:
         Args:
             name: Player name
             provider: LLM provider ("openai", "gemini", "anthropic")
-            model: Specific model to use (optional, uses default if not specified)
+            model: Specific model to use (optional; defaults to first known model for the provider)
             enable_reflection: Whether to enable hand reflection
             use_structured_output: Whether to use structured output (None = provider default)
             **kwargs: Additional arguments passed to player constructor
@@ -68,14 +70,10 @@ class PlayerFactory:
         
         # Use default model if none specified
         if model is None:
-            model = cls.SUPPORTED_MODELS[provider][0]  # First model as default
-        
-        # Validate model for provider
-        if model not in cls.SUPPORTED_MODELS[provider]:
-            raise ValueError(
-                f"Model '{model}' not supported for provider '{provider}'. "
-                f"Supported models for {provider}: {cls.SUPPORTED_MODELS[provider]}"
-            )
+            defaults = cls.SUPPORTED_MODELS.get(provider, [])
+            if not defaults:
+                raise ValueError(f"No default model configured for provider '{provider}'. Please specify a model.")
+            model = defaults[0]  # First model as default
         
         # Create appropriate player
         if provider == "openai":
@@ -90,6 +88,8 @@ class PlayerFactory:
             return GrokPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "callbox":
             return CallboxPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
+        elif provider == "gto":
+            return GTOPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")
@@ -113,4 +113,9 @@ class PlayerFactory:
     def create_grok_player(cls, name: str, model: str = "grok-4", **kwargs):
         """Convenience method to create a Grok (xAI) player."""
         return cls.create_player(name, "grok", model, **kwargs)
+
+    @classmethod
+    def create_gto_player(cls, name: str, model: str = "gto-bot", **kwargs):
+        """Convenience method to create the deterministic GTO baseline player."""
+        return cls.create_player(name, "gto", model, **kwargs)
     

@@ -16,7 +16,14 @@ class AllInPlayer(BasePlayer):
         enable_reflection: bool = False,
         use_structured_output: bool = False,
     ):
-        super().__init__(name, model, initial_stack, system_prompt, enable_reflection, use_structured_output)
+        super().__init__(
+            name=name,
+            model=model,
+            initial_stack=initial_stack,
+            system_prompt=system_prompt,
+            enable_reflection=enable_reflection,
+            use_structured_output=use_structured_output,
+        )
 
     async def _chat(self, messages: Sequence[Dict[str, str]], structured_output: bool = False) -> str:
         """

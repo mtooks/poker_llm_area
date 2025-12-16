@@ -18,6 +18,7 @@ class BasePlayer(ABC):
         initial_stack: int = 400,
         system_prompt: Optional[str] = None,
         enable_reflection: bool = False,
+        use_structured_output: bool = False,
         max_hand_history: int = 50,
         player_index: Optional[int] = None,
     ):
@@ -30,6 +31,7 @@ class BasePlayer(ABC):
         self.system_prompt = system_prompt or self._get_default_system_prompt()
         self.structured_system_prompt = self._get_structured_system_prompt()
         self.enable_reflection = enable_reflection
+        self.use_structured_output = use_structured_output
         self.max_hand_history = max(1, max_hand_history)
         
         # Add tracking for strategic decisions
