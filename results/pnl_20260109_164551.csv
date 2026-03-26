@@ -1,0 +1,25 @@
+hand_number,player_name,hand_profit,cumulative_pnl,stack_after_hand
+0,GTO Baseline,0,0,998
+0,GTO Baseline2,3,3,1002
+1,GTO Baseline2,-54,-51,946
+1,GTO Baseline,57,57,1054
+2,GTO Baseline,4,61,1056
+2,GTO Baseline2,-1,-52,944
+3,GTO Baseline2,0,-52,942
+3,GTO Baseline,3,64,1058
+4,GTO Baseline,-16,48,1040
+4,GTO Baseline2,19,-33,960
+5,GTO Baseline2,4,-29,962
+5,GTO Baseline,-1,47,1038
+6,GTO Baseline,4,51,1040
+6,GTO Baseline2,-1,-30,960
+7,GTO Baseline2,58,28,1016
+7,GTO Baseline,-55,-4,984
+8,GTO Baseline,-196,-200,786
+8,GTO Baseline2,199,227,1214
+9,GTO Baseline2,58,285,1270
+9,GTO Baseline,-55,-255,730
+10,GTO Baseline,732,477,1460
+10,GTO Baseline2,-729,-444,540
+11,GTO Baseline2,-538,-982,0
+11,GTO Baseline,-539,-62,920

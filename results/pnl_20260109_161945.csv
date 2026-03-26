@@ -1,0 +1,145 @@
+hand_number,player_name,hand_profit,cumulative_pnl,stack_after_hand
+0,GTO Baseline,-4,-4,994
+0,Callbox,7,7,1006
+1,Callbox,145,152,1149
+1,GTO Baseline,-142,-146,851
+2,GTO Baseline,57,-89,906
+2,Callbox,-54,98,1094
+3,Callbox,-65,33,1027
+3,GTO Baseline,68,-21,973
+4,GTO Baseline,8,-13,979
+4,Callbox,-5,28,1021
+5,Callbox,-4,24,1015
+5,GTO Baseline,7,-6,985
+6,GTO Baseline,21,15,1004
+6,Callbox,-18,6,996
+7,Callbox,42,48,1036
+7,GTO Baseline,-39,-24,964
+8,GTO Baseline,4,-20,966
+8,Callbox,-1,47,1034
+9,Callbox,8,55,1040
+9,GTO Baseline,-5,-25,960
+10,GTO Baseline,0,-25,958
+10,Callbox,3,58,1042
+11,Callbox,0,58,1040
+11,GTO Baseline,3,-22,960
+12,GTO Baseline,-53,-75,905
+12,Callbox,56,114,1095
+13,Callbox,-4,110,1089
+13,GTO Baseline,7,-68,911
+14,GTO Baseline,7,-61,916
+14,Callbox,-4,106,1084
+15,Callbox,0,106,1082
+15,GTO Baseline,3,-58,918
+16,GTO Baseline,-19,-77,897
+16,Callbox,22,128,1103
+17,Callbox,-3,125,1098
+17,GTO Baseline,6,-71,902
+18,GTO Baseline,4,-67,904
+18,Callbox,-1,124,1096
+19,Callbox,0,124,1094
+19,GTO Baseline,3,-64,906
+20,GTO Baseline,8,-56,912
+20,Callbox,-5,119,1088
+21,Callbox,-4,115,1082
+21,GTO Baseline,7,-49,918
+22,GTO Baseline,4,-45,920
+22,Callbox,-1,114,1080
+23,Callbox,8,122,1086
+23,GTO Baseline,-5,-50,914
+24,GTO Baseline,-171,-221,741
+24,Callbox,174,296,1259
+25,Callbox,0,296,1257
+25,GTO Baseline,3,-218,743
+26,GTO Baseline,0,-218,741
+26,Callbox,3,299,1259
+27,Callbox,0,299,1257
+27,GTO Baseline,3,-215,743
+28,GTO Baseline,4,-211,745
+28,Callbox,-1,298,1255
+29,Callbox,0,298,1253
+29,GTO Baseline,3,-208,747
+30,GTO Baseline,57,-151,802
+30,Callbox,-54,244,1198
+31,Callbox,4,248,1200
+31,GTO Baseline,-1,-152,800
+32,GTO Baseline,164,12,962
+32,Callbox,-161,87,1038
+33,Callbox,4,91,1040
+33,GTO Baseline,-1,11,960
+34,GTO Baseline,2,13,960
+34,Callbox,1,92,1040
+35,Callbox,4,96,1042
+35,GTO Baseline,-1,12,958
+36,GTO Baseline,0,12,956
+36,Callbox,3,99,1044
+37,Callbox,0,99,1042
+37,GTO Baseline,3,15,958
+38,GTO Baseline,-4,11,952
+38,Callbox,7,106,1048
+39,Callbox,-155,-49,891
+39,GTO Baseline,158,169,1109
+40,GTO Baseline,2,171,1109
+40,Callbox,1,-48,891
+41,Callbox,-54,-102,835
+41,GTO Baseline,57,228,1165
+42,GTO Baseline,4,232,1167
+42,Callbox,-1,-103,833
+43,Callbox,-57,-160,774
+43,GTO Baseline,60,292,1226
+44,GTO Baseline,0,292,1224
+44,Callbox,3,-157,776
+45,Callbox,4,-153,778
+45,GTO Baseline,-1,291,1222
+46,GTO Baseline,8,299,1228
+46,Callbox,-5,-158,772
+47,Callbox,4,-154,774
+47,GTO Baseline,-1,298,1226
+48,GTO Baseline,-4,294,1220
+48,Callbox,7,-147,780
+49,Callbox,-54,-201,724
+49,GTO Baseline,57,351,1276
+50,GTO Baseline,-17,334,1257
+50,Callbox,20,-181,743
+51,Callbox,-17,-198,724
+51,GTO Baseline,20,354,1276
+52,GTO Baseline,0,354,1274
+52,Callbox,3,-195,726
+53,Callbox,-19,-214,705
+53,GTO Baseline,22,376,1295
+54,GTO Baseline,-17,359,1276
+54,Callbox,20,-194,724
+55,Callbox,0,-194,722
+55,GTO Baseline,3,362,1278
+56,GTO Baseline,4,366,1280
+56,Callbox,-1,-195,720
+57,Callbox,-147,-342,571
+57,GTO Baseline,150,516,1429
+58,GTO Baseline,20,536,1447
+58,Callbox,-17,-359,553
+59,Callbox,4,-355,555
+59,GTO Baseline,-1,535,1445
+60,GTO Baseline,71,606,1514
+60,Callbox,-68,-423,486
+61,Callbox,4,-419,488
+61,GTO Baseline,-1,605,1512
+62,GTO Baseline,203,808,1713
+62,Callbox,-200,-619,287
+63,Callbox,0,-619,285
+63,GTO Baseline,3,811,1715
+64,GTO Baseline,8,819,1721
+64,Callbox,-5,-624,279
+65,Callbox,-60,-684,217
+65,GTO Baseline,63,882,1783
+66,GTO Baseline,0,882,1781
+66,Callbox,3,-681,219
+67,Callbox,-155,-836,62
+67,GTO Baseline,158,1040,1938
+68,GTO Baseline,0,1040,1936
+68,Callbox,3,-833,64
+69,Callbox,4,-829,66
+69,GTO Baseline,-1,1039,1934
+70,GTO Baseline,0,1039,1932
+70,Callbox,3,-826,68
+71,Callbox,-66,-892,0
+71,GTO Baseline,69,1108,2000

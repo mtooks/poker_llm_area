@@ -2,9 +2,9 @@
 
 # Game settings
 GAME_CONFIG = {
-    "hands": 5,           # Number of hands to play
-    "blinds": (50, 100),   # Small blind, big blind
-    "initial_stack": 10000,  # Starting stack for each player
+    "hands": 500,           # Number of hands to play
+    "blinds": (1, 2),   # Small blind, big blind
+    "initial_stack": 1000,  # Starting stack for each player
     "rng_seed": 42,        # Random seed for reproducibility
     "see_model_monologue": True,  # Toggle player commentary on/off
     "min_bet": 2,          # Minimum bet amount
@@ -42,6 +42,12 @@ PLAYER_CONFIGS = [
     # },
     {
         "name": "GTO Baseline",
+        "provider": "gto",
+        "model": "gto-bot",
+        "enable_reflection": False,
+    },
+    {
+        "name": "GTO Baseline2",
         "provider": "gto",
         "model": "gto-bot",
         "enable_reflection": False,

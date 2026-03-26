@@ -1,0 +1,3 @@
+hand_number,player_name,hand_profit,cumulative_pnl,stack_after_hand
+0,GTO Baseline,-9900,-9900,0
+0,Callbox,10050,10050,20000

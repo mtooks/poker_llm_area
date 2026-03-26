@@ -1,0 +1,4 @@
+hand_number,player_name,hand_profit,cumulative_pnl,stack_after_hand
+0,SamAltman,0,0,999
+0,GTO Baseline,5,5,1003
+0,GTO Baseline2,-2,-2,998
