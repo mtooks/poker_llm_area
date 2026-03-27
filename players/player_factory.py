@@ -9,6 +9,7 @@ from .all_in_player import AllInPlayer
 from .grok_player import GrokPlayer
 from .callbox_player import CallboxPlayer
 from .gto_player import GTOPlayer
+from .cfr_gto_player import CFRGTOPlayer
 
 class PlayerFactory:
     """Factory class for creating poker players with different LLM providers."""
@@ -21,7 +22,8 @@ class PlayerFactory:
         "grok": ["grok-4","grok-3","grok-3-mini"],
         "callbox": ["callbox-bot"],
         "all-in": ["all-in-bot"],
-        "gto": ["gto-bot"]
+        "gto": ["gto-bot"],
+        "cfr-gto": ["cfr-gto"]
     }
     
     @classmethod
@@ -90,6 +92,8 @@ class PlayerFactory:
             return CallboxPlayer(name, model, enable_reflection=enable_reflection, use_structured_output=use_structured_output, **kwargs)
         elif provider == "gto":
             return GTOPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
+        elif provider == "cfr-gto":
+            return CFRGTOPlayer(name, model, enable_reflection=enable_reflection, **kwargs)
         else:
             # This should never happen due to validation above
             raise ValueError(f"Unknown provider: {provider}")
